@@ -84,14 +84,18 @@ export const ShopProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   /* -----------------------------
-   | Fetch authenticated shop
+   | Fetch authenticated shop (/shops/me)
   ----------------------------- */
   const fetchMyShop = async () => {
     try {
       setLoading(true);
       setError(null);
+
       const { data } = await api.get<Shop>("/shops/me");
-      setShop(data);
+      console.log("🏪 [ShopContext] Mi tienda:", data);
+
+      const shopData = (data as any)?.data || data;
+      setShop(shopData);
     } catch (err: any) {
       console.error("Error fetching my shop", err);
       setError(err?.response?.data?.message || "Error cargando tu tienda");
@@ -101,7 +105,7 @@ export const ShopProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   /* -----------------------------
-   | ✅ Fetch shop by ID (NUEVO)
+   | Fetch shop by ID
   ----------------------------- */
   const fetchShopById = async (id: number): Promise<Shop | null> => {
     try {

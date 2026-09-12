@@ -61,14 +61,22 @@ export default function AssociationScreen() {
      STATES
   ========================================================= */
 
-  const [tab, setTab] = useState("perfil");
+  const [tab, setTab] = useState<"perfil" | "productos">("perfil");
   const [refreshing, setRefreshing] = useState(false);
 
   const [form, setForm] = useState<any>({
+    name: "",
+    description: "",
+    city: "",
+    address: "",
+    phone: "",
+    website: "",
+    image: "",
     products: [],
   });
 
   const [loading, setLoading] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   // Productos
   const [showProductModal, setShowProductModal] = useState(false);
@@ -89,7 +97,13 @@ export default function AssociationScreen() {
   useEffect(() => {
     if (association) {
       setForm({
-        ...association,
+        name: association.name || "",
+        description: association.description || "",
+        city: association.city || "",
+        address: association.address || "",
+        phone: association.phone || "",
+        website: association.website || "",
+        image: association.image || "",
         products: association.products || [],
       });
     }
@@ -101,32 +115,53 @@ export default function AssociationScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await me();
-    setRefreshing(false);
+    try {
+      await me();
+    } catch (e) {
+      console.error("Error al refrescar:", e);
+    } finally {
+      setRefreshing(false);
+    }
   }, [me]);
 
   /* =========================================================
      PROFILE UPDATE
   ========================================================= */
 
-  const handleUpdate = async () => {
-    try {
-      setLoading(true);
+const handleUpdate = async () => {
+  try {
+    setLoading(true);
 
-      if (form?.id) {
-        await updateAssociation(form.id, form);
-      } else {
-        await createAssociation(form);
-      }
+    const associationId = form?.id || association?.id;
 
-      await me();
-      Alert.alert("✅ Guardado");
-    } catch (error: any) {
-      Alert.alert("❌ Error", error?.message || "Error al guardar");
-    } finally {
-      setLoading(false);
+    if (!associationId) {
+      Alert.alert("❌ Error", "No se encontró la asociación");
+      return;
     }
-  };
+
+    // ✅ PUT /associations/{id} — solo actualiza, nunca crea
+    await updateAssociation(associationId, {
+      name: form.name,
+      description: form.description,
+      city: form.city,
+      address: form.address,
+      phone: form.phone,
+      website: form.website,
+    });
+
+    await me();
+
+    Alert.alert("✅ Guardado", "Perfil actualizado correctamente");
+  } catch (error: any) {
+    console.error("❌ Error actualizando:", error);
+    Alert.alert(
+      "❌ Error",
+      error?.response?.data?.message || error?.message || "Error al guardar"
+    );
+  } finally {
+    setLoading(false);
+  }
+};
 
   /* =========================================================
      IMAGE PICKER
@@ -155,8 +190,9 @@ export default function AssociationScreen() {
         setNewProduct({ ...newProduct, image: result.assets[0].uri });
       } else if (type === "profile") {
         try {
-          setLoading(true);
+          setUploadingAvatar(true);
           const newUrl = await updateAvatar(result.assets[0].uri);
+          console.log("✅ Nueva URL avatar:", newUrl);
           setForm((prev: any) => ({ ...prev, image: newUrl }));
           await me();
           Alert.alert("✅ Éxito", "Foto de perfil actualizada");
@@ -166,7 +202,7 @@ export default function AssociationScreen() {
             error?.message || "No se pudo subir la imagen"
           );
         } finally {
-          setLoading(false);
+          setUploadingAvatar(false);
         }
       }
     }
@@ -195,10 +231,16 @@ export default function AssociationScreen() {
       formData.append("association_id", association.id);
 
       if (newProduct.image) {
+        const uriParts = newProduct.image.split("/");
+        const fileName = uriParts[uriParts.length - 1] || "product.jpg";
+        const ext = fileName.split(".").pop()?.toLowerCase() || "jpg";
+        const mime =
+          ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
+
         formData.append("image", {
           uri: newProduct.image,
-          name: "photo.jpg",
-          type: "image/jpeg",
+          name: fileName,
+          type: mime,
         } as any);
       }
 
@@ -217,6 +259,8 @@ export default function AssociationScreen() {
         stock: "",
         image: "",
       });
+
+      await me();
       Alert.alert("✅ Producto creado");
     } catch (error: any) {
       console.error(error);
@@ -239,6 +283,7 @@ export default function AssociationScreen() {
               ...prev,
               products: prev.products.filter((p: any) => p.id !== productId),
             }));
+            await me();
             Alert.alert("✅ Producto eliminado");
           } catch {
             Alert.alert("❌ Error eliminando");
@@ -259,6 +304,7 @@ export default function AssociationScreen() {
       }));
       setEditProductModal(false);
       setEditProductState(null);
+      await me();
       Alert.alert("✅ Producto actualizado");
     } catch {
       Alert.alert("❌ Error actualizando");
@@ -277,6 +323,7 @@ export default function AssociationScreen() {
       ]}
     >
       <Image
+        key={item.image_url || item.image}   // ✅ fuerza recarga si cambia la URL
         source={{
           uri:
             item.image_url ||
@@ -363,8 +410,10 @@ export default function AssociationScreen() {
           <TouchableOpacity
             onPress={() => pickImage("profile")}
             style={styles.avatarContainer}
+            disabled={uploadingAvatar}
           >
             <Image
+              key={form.image}                 // ✅ fuerza re-render al cambiar URL
               source={{
                 uri:
                   form.image ||
@@ -372,9 +421,15 @@ export default function AssociationScreen() {
               }}
               style={styles.avatar}
             />
-            <View style={styles.avatarBadge}>
-              <Ionicons name="camera" size={16} color="#fff" />
-            </View>
+            {uploadingAvatar ? (
+              <View style={styles.avatarOverlay}>
+                <ActivityIndicator color="#fff" />
+              </View>
+            ) : (
+              <View style={styles.avatarBadge}>
+                <Ionicons name="camera" size={16} color="#fff" />
+              </View>
+            )}
           </TouchableOpacity>
           <View style={styles.headerInfo}>
             <Text style={[styles.name, { color: colors.text }]}>
@@ -388,7 +443,7 @@ export default function AssociationScreen() {
 
         {/* TABS: SOLO PERFIL Y PRODUCTOS */}
         <View style={styles.tabs}>
-          {["perfil", "productos"].map((t) => (
+          {(["perfil", "productos"] as const).map((t) => (
             <TouchableOpacity
               key={t}
               onPress={() => setTab(t)}
@@ -411,7 +466,7 @@ export default function AssociationScreen() {
         </View>
       </View>
 
-      {/* FAB: solo en productos */}
+      {/* FAB */}
       {tab === "productos" && (
         <TouchableOpacity
           style={[styles.fab, { backgroundColor: colors.green }]}
@@ -445,12 +500,15 @@ export default function AssociationScreen() {
               <TouchableOpacity
                 onPress={handleUpdate}
                 style={styles.saveBtnSmall}
+                disabled={loading}
               >
-                <Text style={styles.saveTextSmall}>💾 Guardar</Text>
+                <Text style={styles.saveTextSmall}>
+                  {loading ? "Guardando..." : "💾 Guardar"}
+                </Text>
               </TouchableOpacity>
             </View>
 
-            {["name", "description", "city", "address", "phone", "website"].map(
+            {(["name", "description", "city", "address", "phone", "website"] as const).map(
               (field) => (
                 <TextInput
                   key={field}
@@ -466,6 +524,7 @@ export default function AssociationScreen() {
                   placeholderTextColor={colors.placeholder}
                   value={form[field] || ""}
                   onChangeText={(t) => setForm({ ...form, [field]: t })}
+                  multiline={field === "description"}
                 />
               )
             )}
@@ -477,7 +536,7 @@ export default function AssociationScreen() {
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text style={[styles.sectionTitle, { color: colors.text }]}>
-                🛍️ Productos
+                🛍️ Productos ({form.products?.length || 0})
               </Text>
               <TouchableOpacity
                 onPress={() => setShowProductModal(true)}
@@ -544,7 +603,6 @@ export default function AssociationScreen() {
                   },
                 ]}
               />
-
               <TextInput
                 placeholder="Descripción"
                 placeholderTextColor={colors.placeholder}
@@ -561,7 +619,6 @@ export default function AssociationScreen() {
                   },
                 ]}
               />
-
               <TextInput
                 placeholder="Precio *"
                 placeholderTextColor={colors.placeholder}
@@ -577,7 +634,6 @@ export default function AssociationScreen() {
                   },
                 ]}
               />
-
               <TextInput
                 placeholder="Stock"
                 placeholderTextColor={colors.placeholder}
@@ -665,7 +721,6 @@ export default function AssociationScreen() {
                 placeholder="Nombre"
                 placeholderTextColor={colors.placeholder}
               />
-
               <TextInput
                 style={[
                   styles.input,
@@ -682,12 +737,49 @@ export default function AssociationScreen() {
                 placeholder="Descripción"
                 placeholderTextColor={colors.placeholder}
               />
+              <TextInput
+                style={[
+                  styles.input,
+                  {
+                    backgroundColor: colors.input,
+                    borderColor: colors.border,
+                    color: colors.text,
+                  },
+                ]}
+                value={String(editProductState?.price ?? "")}
+                onChangeText={(t) =>
+                  setEditProductState({ ...editProductState, price: t })
+                }
+                placeholder="Precio"
+                placeholderTextColor={colors.placeholder}
+                keyboardType="numeric"
+              />
+              <TextInput
+                style={[
+                  styles.input,
+                  {
+                    backgroundColor: colors.input,
+                    borderColor: colors.border,
+                    color: colors.text,
+                  },
+                ]}
+                value={String(editProductState?.stock ?? "")}
+                onChangeText={(t) =>
+                  setEditProductState({ ...editProductState, stock: t })
+                }
+                placeholder="Stock"
+                placeholderTextColor={colors.placeholder}
+                keyboardType="numeric"
+              />
 
               <TouchableOpacity
                 onPress={handleUpdateProduct}
                 style={styles.saveBtn}
+                disabled={loading}
               >
-                <Text style={styles.saveText}>💾 Guardar cambios</Text>
+                <Text style={styles.saveText}>
+                  {loading ? "Guardando..." : "💾 Guardar cambios"}
+                </Text>
               </TouchableOpacity>
             </ScrollView>
           </KeyboardAvoidingView>
@@ -707,15 +799,12 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     borderBottomWidth: 1,
   },
-
   headerTop: {
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: 16,
   },
-
   avatarContainer: { position: "relative", marginRight: 16 },
-
   avatar: {
     width: 80,
     height: 80,
@@ -723,7 +812,17 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: "#22c55e",
   },
-
+  avatarOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 40,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   avatarBadge: {
     position: "absolute",
     bottom: 0,
@@ -734,9 +833,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: "#fff",
   },
-
   headerInfo: { flex: 1 },
-
   name: { fontSize: 20, fontWeight: "bold" },
 
   tabs: {
@@ -746,14 +843,12 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.03)",
     borderRadius: 12,
   },
-
   tabButton: {
     flex: 1,
     paddingVertical: 10,
     borderRadius: 10,
     alignItems: "center",
   },
-
   tab: { fontWeight: "500", fontSize: 14 },
   activeTab: { fontWeight: "bold", fontSize: 14 },
 
@@ -775,14 +870,12 @@ const styles = StyleSheet.create({
   },
 
   section: { padding: 16 },
-
   sectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 12,
   },
-
   sectionTitle: { fontSize: 18, fontWeight: "700" },
 
   saveBtnSmall: {
@@ -791,7 +884,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 20,
   },
-
   saveTextSmall: { color: "#fff", fontWeight: "600", fontSize: 13 },
 
   addButtonSmall: {
@@ -818,7 +910,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: "center",
   },
-
   saveText: {
     color: "#fff",
     textAlign: "center",
@@ -838,29 +929,22 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 3,
   },
-
   cardContent: { padding: 12 },
-
   productImage: { width: "100%", height: 180 },
-
   previewImage: {
     width: "100%",
     height: 180,
     borderRadius: 12,
     marginVertical: 10,
   },
-
   productFooter: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginTop: 10,
   },
-
   actions: { flexDirection: "row", gap: 12 },
-
   actionButton: { padding: 6, borderRadius: 8 },
-
   postTitle: { fontWeight: "bold", fontSize: 16 },
 
   modalOverlay: {
@@ -868,23 +952,19 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-
   modalContainer: {
     width: "92%",
     maxHeight: "85%",
     borderRadius: 20,
     padding: 20,
   },
-
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 16,
   },
-
   modalTitle: { fontSize: 20, fontWeight: "bold", flex: 1 },
-
   imagePickerButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -894,6 +974,5 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginVertical: 8,
   },
-
   imagePickerText: { fontWeight: "600" },
 });

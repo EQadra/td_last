@@ -1,4 +1,3 @@
-// DoctorScreen.tsx - VERSIÓN FINAL MEJORADA
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import React, { useCallback, useEffect, useState } from "react";
@@ -10,24 +9,24 @@ import {
   KeyboardAvoidingView,
   Modal,
   Platform,
-  RefreshControl, // ✅ AGREGAR ESTE
+  RefreshControl,
   ScrollView,
   StatusBar,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
 
 import { useAuth } from "../../../../context/AuthContext";
+import { useDoctors } from "../../../../context/DoctorContext";
 import { usePosts } from "../../../../context/PostContext";
 import { useServices } from "../../../../context/ServiceContext";
 import { useDarkMode } from "../../../../context/app/DarkModeContext";
-import api from "../../../../utils/axios";
 
 // ============================================================
-// TIPOS PARA COMENTARIOS
+// TIPOS
 // ============================================================
 interface Comment {
   id: number;
@@ -52,15 +51,29 @@ interface PostWithComments {
 
 export default function DoctorScreen() {
   const { darkMode } = useDarkMode();
-  const { user, me } = useAuth();
-  
+
+  const colors = {
+    background: darkMode ? "#020617" : "#F9FAFB",
+    card: darkMode ? "#0F172A" : "#FFFFFF",
+    input: darkMode ? "#1E293B" : "#F3F4F6",
+    text: darkMode ? "#F8FAFC" : "#111827",
+    secondaryText: darkMode ? "#94A3B8" : "#666666",
+    border: darkMode ? "#334155" : "#E5E7EB",
+    button: "#16A34A",
+    placeholder: darkMode ? "#94A3B8" : "#999999",
+    danger: "#EF4444",
+    green: "#22c55e",
+    overlay: darkMode ? "rgba(0,0,0,0.6)" : "rgba(0,0,0,0.4)",
+  };
+
   // =========================================================
   // CONTEXTS
   // =========================================================
+  const { user, me, updateAvatar } = useAuth();
+  const { updateDoctor } = useDoctors();
+
   const {
-    posts,
     myPosts,
-    loading: postsLoading,
     loadingMyPosts,
     fetchHomePosts,
     fetchMyPosts,
@@ -80,31 +93,15 @@ export default function DoctorScreen() {
   } = useServices();
 
   // =========================================================
-  // COLORES (DARK MODE)
-  // =========================================================
-  const colors = {
-    background: darkMode ? "#020617" : "#F9FAFB",
-    card: darkMode ? "#0F172A" : "#FFFFFF",
-    input: darkMode ? "#1E293B" : "#F3F4F6",
-    text: darkMode ? "#F8FAFC" : "#111827",
-    secondaryText: darkMode ? "#94A3B8" : "#666666",
-    border: darkMode ? "#334155" : "#E5E7EB",
-    button: "#16A34A",
-    placeholder: darkMode ? "#94A3B8" : "#999999",
-    danger: "#EF4444",
-    green: "#22c55e",
-    overlay: darkMode ? "rgba(0,0,0,0.6)" : "rgba(0,0,0,0.4)",
-  };
-
-  // =========================================================
   // ESTADOS LOCALES
   // =========================================================
   const [tab, setTab] = useState("perfil");
   const [form, setForm] = useState<any>({});
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
-  // Estados para modales de servicios
+  // Servicios
   const [serviceModalVisible, setServiceModalVisible] = useState(false);
   const [editingService, setEditingService] = useState<any>(null);
   const [serviceName, setServiceName] = useState("");
@@ -112,29 +109,31 @@ export default function DoctorScreen() {
   const [servicePrice, setServicePrice] = useState("");
   const [serviceDuration, setServiceDuration] = useState("");
 
-  // Estados para modales de posts
+  // Posts
   const [postModalVisible, setPostModalVisible] = useState(false);
   const [editingPost, setEditingPost] = useState<any>(null);
   const [postTitle, setPostTitle] = useState("");
   const [postContent, setPostContent] = useState("");
   const [postCategory, setPostCategory] = useState("general");
 
-  // Estados para comentarios
+  // Comentarios
   const [commentModalVisible, setCommentModalVisible] = useState(false);
   const [activePost, setActivePost] = useState<PostWithComments | null>(null);
   const [commentText, setCommentText] = useState("");
   const [localComments, setLocalComments] = useState<Comment[]>([]);
 
-  // Estados para like
-  const [localLikes, setLocalLikes] = useState<Record<number, { liked: boolean; count: number }>>({});
+  // Likes locales
+  const [localLikes, setLocalLikes] = useState<
+    Record<number, { liked: boolean; count: number }>
+  >({});
 
   // =========================================================
-  // OBTENER DATOS DEL PERFIL DESDE AUTH
+  // PERFIL DESDE AUTH
   // =========================================================
   const doctor = user?.profile;
 
   // =========================================================
-  // EFFECTS - CARGAR DATOS
+  // EFFECTS
   // =========================================================
   useEffect(() => {
     if (doctor?.id) {
@@ -144,20 +143,31 @@ export default function DoctorScreen() {
 
   useEffect(() => {
     if (doctor) {
-      setForm(doctor);
+      setForm({
+        id: doctor.id,
+        first_name: doctor.first_name || "",
+        last_name: doctor.last_name || "",
+        specialty: doctor.specialty || "",
+        city: doctor.city || "",
+        university: doctor.university || "",
+        description: doctor.description || "",
+        schedule: doctor.schedule || "",
+        degree: doctor.degree || "",
+        graduation_code: doctor.graduation_code || "",
+        phone: doctor.phone || "",
+        emergency_phone: doctor.emergency_phone || "",
+        clinic_phone: doctor.clinic_phone || "",
+        image: doctor.image || "",
+      });
     }
   }, [doctor]);
 
   // =========================================================
-  // FUNCIONES
+  // CARGA DE DATOS
   // =========================================================
   const loadAllData = useCallback(async () => {
     try {
-      await Promise.all([
-        fetchServices(),
-        fetchHomePosts(),
-        fetchMyPosts(),
-      ]);
+      await Promise.all([fetchServices(), fetchHomePosts(), fetchMyPosts()]);
     } catch (error) {
       console.error("Error cargando datos:", error);
     }
@@ -170,7 +180,7 @@ export default function DoctorScreen() {
   }, [loadAllData, me]);
 
   // =========================================================
-  // IMAGE PICKER
+  // IMAGE PICKER (AVATAR) — usa /auth/update-avatar
   // =========================================================
   const pickImage = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -186,49 +196,43 @@ export default function DoctorScreen() {
       aspect: [1, 1],
     });
 
-    if (!result.canceled) {
-      const imageUri = result.assets[0].uri;
-      setForm((prev: any) => ({ ...prev, image: imageUri }));
-      
-      // Subir imagen al servidor
-      try {
-        const formData = new FormData();
-        formData.append("image", {
-          uri: imageUri,
-          name: "doctor.jpg",
-          type: "image/jpeg",
-        } as any);
+    if (result.canceled) return;
 
-        const doctorId = doctor?.id;
-        if (doctorId) {
-          await api.post(`/doctors/${doctorId}/image`, formData, {
-            headers: { "Content-Type": "multipart/form-data" },
-          });
-          Alert.alert("✅ Éxito", "Foto actualizada correctamente");
-          await me();
-        }
-      } catch (error: any) {
-        console.error("Error subiendo imagen:", error);
-        Alert.alert("❌ Error", "No se pudo subir la imagen");
-      }
+    try {
+      setUploadingAvatar(true);
+      const imageUri = result.assets[0].uri;
+
+      // ✅ Actualiza users.avatar + doctors.image a la vez
+      const newUrl = await updateAvatar(imageUri);
+      console.log("✅ Avatar doctor actualizado:", newUrl);
+
+      setForm((prev: any) => ({ ...prev, image: newUrl }));
+      await me();
+
+      Alert.alert("✅ Éxito", "Foto actualizada correctamente");
+    } catch (error: any) {
+      console.error("Error subiendo imagen:", error);
+      Alert.alert("❌ Error", error?.message || "No se pudo subir la imagen");
+    } finally {
+      setUploadingAvatar(false);
     }
   };
 
   // =========================================================
-  // ACTUALIZAR PERFIL
+  // ACTUALIZAR PERFIL (TEXTO) — usa updateDoctor del contexto
   // =========================================================
   const handleUpdate = async () => {
     try {
       setLoading(true);
-      
-      const doctorId = doctor?.id;
-      
+
+      const doctorId = doctor?.id || form?.id;
       if (!doctorId) {
         Alert.alert("Error", "No se encontró el ID del doctor");
         return;
       }
 
-      await api.put(`/doctors/${doctorId}`, {
+      // ✅ PUT /doctors/{id} → sincroniza doctors + users (name, phone, city)
+      await updateDoctor(doctorId, {
         first_name: form.first_name,
         last_name: form.last_name,
         specialty: form.specialty,
@@ -238,20 +242,28 @@ export default function DoctorScreen() {
         schedule: form.schedule,
         degree: form.degree,
         graduation_code: form.graduation_code,
+        phone: form.phone,
+        emergency_phone: form.emergency_phone,
+        clinic_phone: form.clinic_phone,
       });
 
       await me();
       Alert.alert("✅ Éxito", "Perfil actualizado correctamente");
     } catch (err: any) {
       console.error("❌ Error:", err);
-      Alert.alert("❌ Error", err?.message || "Error al actualizar el perfil");
+      Alert.alert(
+        "❌ Error",
+        err?.response?.data?.message ||
+          err?.message ||
+          "Error al actualizar el perfil"
+      );
     } finally {
       setLoading(false);
     }
   };
 
   // =========================================================
-  // CREAR SERVICIO
+  // SERVICIOS
   // =========================================================
   const handleCreateService = async () => {
     if (!serviceName.trim() || !servicePrice.trim()) {
@@ -279,7 +291,7 @@ export default function DoctorScreen() {
         });
         Alert.alert("✅ Éxito", "Servicio creado correctamente");
       }
-      
+
       resetServiceModal();
       await fetchServices();
     } catch (error: any) {
@@ -287,34 +299,27 @@ export default function DoctorScreen() {
     }
   };
 
-  // =========================================================
-  // ELIMINAR SERVICIO
-  // =========================================================
   const handleDeleteService = (id: number) => {
-    Alert.alert(
-      "Eliminar servicio",
-      "¿Estás seguro?",
-      [
-        { text: "Cancelar", style: "cancel" },
-        {
-          text: "Eliminar",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await deleteService(id);
-              await fetchServices();
-              Alert.alert("✅ Éxito", "Servicio eliminado");
-            } catch (error: any) {
-              Alert.alert("Error", error?.message || "No se pudo eliminar");
-            }
-          },
+    Alert.alert("Eliminar servicio", "¿Estás seguro?", [
+      { text: "Cancelar", style: "cancel" },
+      {
+        text: "Eliminar",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await deleteService(id);
+            await fetchServices();
+            Alert.alert("✅ Éxito", "Servicio eliminado");
+          } catch (error: any) {
+            Alert.alert("Error", error?.message || "No se pudo eliminar");
+          }
         },
-      ]
-    );
+      },
+    ]);
   };
 
   // =========================================================
-  // CREAR POST
+  // POSTS
   // =========================================================
   const handleCreatePost = async () => {
     if (!postTitle.trim() || !postContent.trim()) {
@@ -324,12 +329,13 @@ export default function DoctorScreen() {
 
     try {
       if (editingPost) {
-        await updatePost(editingPost.id, {
+        // Si tienes updatePost en el context, úsalo aquí
+        await createPost({
           title: postTitle.trim(),
           content: postContent.trim(),
           category: postCategory,
         });
-        Alert.alert("✅ Éxito", "Post actualizado correctamente");
+        Alert.alert("✅ Éxito", "Post creado correctamente");
       } else {
         await createPost({
           title: postTitle.trim(),
@@ -338,7 +344,7 @@ export default function DoctorScreen() {
         });
         Alert.alert("✅ Éxito", "Post creado correctamente");
       }
-      
+
       resetPostModal();
       await Promise.all([fetchHomePosts(), fetchMyPosts()]);
     } catch (error: any) {
@@ -346,52 +352,42 @@ export default function DoctorScreen() {
     }
   };
 
-  // =========================================================
-  // ELIMINAR POST
-  // =========================================================
   const handleDeletePost = (id: number) => {
-    Alert.alert(
-      "Eliminar post",
-      "¿Estás seguro?",
-      [
-        { text: "Cancelar", style: "cancel" },
-        {
-          text: "Eliminar",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await deletePost(id);
-              await Promise.all([fetchHomePosts(), fetchMyPosts()]);
-              Alert.alert("✅ Éxito", "Post eliminado");
-            } catch (error: any) {
-              Alert.alert("Error", error?.message || "No se pudo eliminar");
-            }
-          },
+    Alert.alert("Eliminar post", "¿Estás seguro?", [
+      { text: "Cancelar", style: "cancel" },
+      {
+        text: "Eliminar",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await deletePost(id);
+            await Promise.all([fetchHomePosts(), fetchMyPosts()]);
+            Alert.alert("✅ Éxito", "Post eliminado");
+          } catch (error: any) {
+            Alert.alert("Error", error?.message || "No se pudo eliminar");
+          }
         },
-      ]
-    );
+      },
+    ]);
   };
 
-  // =========================================================
-  // TOGGLE LIKE
-  // =========================================================
   const handleToggleLike = async (postId: number) => {
     try {
       const currentLiked = localLikes[postId]?.liked ?? false;
       const currentCount = localLikes[postId]?.count ?? 0;
-      
-      setLocalLikes(prev => ({
+
+      setLocalLikes((prev) => ({
         ...prev,
         [postId]: {
           liked: !currentLiked,
           count: currentLiked ? currentCount - 1 : currentCount + 1,
-        }
+        },
       }));
 
       await toggleLike(postId);
       await Promise.all([fetchHomePosts(), fetchMyPosts()]);
     } catch (error: any) {
-      setLocalLikes(prev => {
+      setLocalLikes((prev) => {
         const newState = { ...prev };
         delete newState[postId];
         return newState;
@@ -415,7 +411,7 @@ export default function DoctorScreen() {
 
     try {
       const newComment = await addComment(activePost.id, commentText.trim());
-      setLocalComments(prev => [newComment, ...prev]);
+      setLocalComments((prev) => [newComment, ...prev]);
       setCommentText("");
       await Promise.all([fetchHomePosts(), fetchMyPosts()]);
     } catch (error: any) {
@@ -451,7 +447,7 @@ export default function DoctorScreen() {
   };
 
   // =========================================================
-  // RENDER COMENTARIO
+  // RENDER COMMENT
   // =========================================================
   const renderComment = ({ item }: { item: Comment }) => (
     <View style={[styles.commentItem, { borderBottomColor: colors.border }]}>
@@ -478,20 +474,35 @@ export default function DoctorScreen() {
 
     return (
       <View
-        style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
+        style={[
+          styles.card,
+          { backgroundColor: colors.card, borderColor: colors.border },
+        ]}
       >
         <View style={styles.cardHeader}>
           <Text style={[styles.cardTitle, { color: colors.text }]}>
             {item.title}
           </Text>
           <View style={styles.cardActions}>
-            <TouchableOpacity onPress={() => handleToggleLike(item.id)} style={styles.actionButton}>
+            <TouchableOpacity
+              onPress={() => handleToggleLike(item.id)}
+              style={styles.actionButton}
+            >
               <Ionicons
                 name={likeState.liked ? "heart" : "heart-outline"}
                 size={20}
                 color={likeState.liked ? colors.danger : colors.secondaryText}
               />
-              <Text style={[styles.likeCount, { color: likeState.liked ? colors.danger : colors.secondaryText }]}>
+              <Text
+                style={[
+                  styles.likeCount,
+                  {
+                    color: likeState.liked
+                      ? colors.danger
+                      : colors.secondaryText,
+                  },
+                ]}
+              >
                 {likeState.count}
               </Text>
             </TouchableOpacity>
@@ -500,7 +511,11 @@ export default function DoctorScreen() {
               onPress={() => openCommentModal(item)}
               style={styles.actionButton}
             >
-              <Ionicons name="chatbubble-outline" size={20} color={colors.green} />
+              <Ionicons
+                name="chatbubble-outline"
+                size={20}
+                color={colors.green}
+              />
               <Text style={[styles.commentCount, { color: colors.green }]}>
                 {item.comments?.length || 0}
               </Text>
@@ -524,7 +539,10 @@ export default function DoctorScreen() {
           </View>
         </View>
 
-        <Text style={[styles.cardDescription, { color: colors.secondaryText }]} numberOfLines={3}>
+        <Text
+          style={[styles.cardDescription, { color: colors.secondaryText }]}
+          numberOfLines={3}
+        >
           {item.content}
         </Text>
 
@@ -542,7 +560,7 @@ export default function DoctorScreen() {
   };
 
   // =========================================================
-  // RENDER POSTS LIST
+  // RENDER LISTA POSTS
   // =========================================================
   const renderPostsList = () => {
     if (loadingMyPosts) {
@@ -563,7 +581,11 @@ export default function DoctorScreen() {
 
     return (
       <View style={styles.emptyContainer}>
-        <Ionicons name="newspaper-outline" size={50} color={colors.secondaryText} />
+        <Ionicons
+          name="newspaper-outline"
+          size={50}
+          color={colors.secondaryText}
+        />
         <Text style={[styles.emptyText, { color: colors.secondaryText }]}>
           No tienes posts aún
         </Text>
@@ -572,7 +594,7 @@ export default function DoctorScreen() {
   };
 
   // =========================================================
-  // RENDER SERVICES LIST
+  // RENDER LISTA SERVICIOS
   // =========================================================
   const renderServicesList = () => {
     if (servicesLoading) {
@@ -587,7 +609,10 @@ export default function DoctorScreen() {
       return services.map((s: any) => (
         <View
           key={s.id}
-          style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
+          style={[
+            styles.card,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
         >
           <View style={styles.cardHeader}>
             <Text style={[styles.cardTitle, { color: colors.text }]}>
@@ -611,7 +636,9 @@ export default function DoctorScreen() {
               </TouchableOpacity>
             </View>
           </View>
-          <Text style={[styles.cardDescription, { color: colors.secondaryText }]}>
+          <Text
+            style={[styles.cardDescription, { color: colors.secondaryText }]}
+          >
             {s.description}
           </Text>
           <View style={styles.cardFooter}>
@@ -628,7 +655,11 @@ export default function DoctorScreen() {
 
     return (
       <View style={styles.emptyContainer}>
-        <Ionicons name="medical-outline" size={50} color={colors.secondaryText} />
+        <Ionicons
+          name="medical-outline"
+          size={50}
+          color={colors.secondaryText}
+        />
         <Text style={[styles.emptyText, { color: colors.secondaryText }]}>
           No tienes servicios aún
         </Text>
@@ -644,42 +675,130 @@ export default function DoctorScreen() {
       return (
         <View style={styles.formContainer}>
           <TextInput
-            style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.text }]}
+            style={[
+              styles.input,
+              {
+                backgroundColor: colors.input,
+                borderColor: colors.border,
+                color: colors.text,
+              },
+            ]}
             placeholder="Nombre"
             placeholderTextColor={colors.placeholder}
             value={form.first_name}
             onChangeText={(t) => setForm({ ...form, first_name: t })}
           />
           <TextInput
-            style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.text }]}
+            style={[
+              styles.input,
+              {
+                backgroundColor: colors.input,
+                borderColor: colors.border,
+                color: colors.text,
+              },
+            ]}
             placeholder="Apellido"
             placeholderTextColor={colors.placeholder}
             value={form.last_name}
             onChangeText={(t) => setForm({ ...form, last_name: t })}
           />
           <TextInput
-            style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.text }]}
+            style={[
+              styles.input,
+              {
+                backgroundColor: colors.input,
+                borderColor: colors.border,
+                color: colors.text,
+              },
+            ]}
             placeholder="Especialidad"
             placeholderTextColor={colors.placeholder}
             value={form.specialty}
             onChangeText={(t) => setForm({ ...form, specialty: t })}
           />
           <TextInput
-            style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.text }]}
+            style={[
+              styles.input,
+              {
+                backgroundColor: colors.input,
+                borderColor: colors.border,
+                color: colors.text,
+              },
+            ]}
+            placeholder="Teléfono"
+            placeholderTextColor={colors.placeholder}
+            value={form.phone}
+            onChangeText={(t) => setForm({ ...form, phone: t })}
+            keyboardType="phone-pad"
+          />
+          <TextInput
+            style={[
+              styles.input,
+              {
+                backgroundColor: colors.input,
+                borderColor: colors.border,
+                color: colors.text,
+              },
+            ]}
+            placeholder="Teléfono de emergencia"
+            placeholderTextColor={colors.placeholder}
+            value={form.emergency_phone}
+            onChangeText={(t) => setForm({ ...form, emergency_phone: t })}
+            keyboardType="phone-pad"
+          />
+          <TextInput
+            style={[
+              styles.input,
+              {
+                backgroundColor: colors.input,
+                borderColor: colors.border,
+                color: colors.text,
+              },
+            ]}
+            placeholder="Teléfono de consultorio"
+            placeholderTextColor={colors.placeholder}
+            value={form.clinic_phone}
+            onChangeText={(t) => setForm({ ...form, clinic_phone: t })}
+            keyboardType="phone-pad"
+          />
+          <TextInput
+            style={[
+              styles.input,
+              {
+                backgroundColor: colors.input,
+                borderColor: colors.border,
+                color: colors.text,
+              },
+            ]}
             placeholder="Ciudad"
             placeholderTextColor={colors.placeholder}
             value={form.city}
             onChangeText={(t) => setForm({ ...form, city: t })}
           />
           <TextInput
-            style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.text }]}
+            style={[
+              styles.input,
+              {
+                backgroundColor: colors.input,
+                borderColor: colors.border,
+                color: colors.text,
+              },
+            ]}
             placeholder="Universidad"
             placeholderTextColor={colors.placeholder}
             value={form.university}
             onChangeText={(t) => setForm({ ...form, university: t })}
           />
           <TextInput
-            style={[styles.input, styles.textArea, { backgroundColor: colors.input, borderColor: colors.border, color: colors.text }]}
+            style={[
+              styles.input,
+              styles.textArea,
+              {
+                backgroundColor: colors.input,
+                borderColor: colors.border,
+                color: colors.text,
+              },
+            ]}
             placeholder="Descripción"
             placeholderTextColor={colors.placeholder}
             value={form.description}
@@ -688,28 +807,53 @@ export default function DoctorScreen() {
             numberOfLines={4}
           />
           <TextInput
-            style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.text }]}
+            style={[
+              styles.input,
+              {
+                backgroundColor: colors.input,
+                borderColor: colors.border,
+                color: colors.text,
+              },
+            ]}
             placeholder="Horario (ej: L-V 9:00-18:00)"
             placeholderTextColor={colors.placeholder}
             value={form.schedule}
             onChangeText={(t) => setForm({ ...form, schedule: t })}
           />
           <TextInput
-            style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.text }]}
+            style={[
+              styles.input,
+              {
+                backgroundColor: colors.input,
+                borderColor: colors.border,
+                color: colors.text,
+              },
+            ]}
             placeholder="Grado / Título"
             placeholderTextColor={colors.placeholder}
             value={form.degree}
             onChangeText={(t) => setForm({ ...form, degree: t })}
           />
           <TextInput
-            style={[styles.input, { backgroundColor: colors.input, borderColor: colors.border, color: colors.text }]}
+            style={[
+              styles.input,
+              {
+                backgroundColor: colors.input,
+                borderColor: colors.border,
+                color: colors.text,
+              },
+            ]}
             placeholder="Código de graduación"
             placeholderTextColor={colors.placeholder}
             value={form.graduation_code}
             onChangeText={(t) => setForm({ ...form, graduation_code: t })}
           />
 
-          <TouchableOpacity style={styles.saveBtn} onPress={handleUpdate} disabled={loading}>
+          <TouchableOpacity
+            style={styles.saveBtn}
+            onPress={handleUpdate}
+            disabled={loading}
+          >
             <Text style={styles.saveText}>
               {loading ? "Guardando..." : "💾 Guardar cambios"}
             </Text>
@@ -787,49 +931,70 @@ export default function DoctorScreen() {
   // =========================================================
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      
-      {/* STATUS BAR */}
-      <StatusBar barStyle={darkMode ? "light-content" : "dark-content"} backgroundColor={colors.background} />
-      
-      {/* HEADER CON TABS INTEGRADOS */}
-      <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+      <StatusBar
+        barStyle={darkMode ? "light-content" : "dark-content"}
+        backgroundColor={colors.background}
+      />
+
+      {/* HEADER */}
+      <View
+        style={[
+          styles.header,
+          { backgroundColor: colors.card, borderBottomColor: colors.border },
+        ]}
+      >
         <View style={styles.headerTop}>
-          <TouchableOpacity onPress={pickImage} style={styles.avatarContainer}>
+          <TouchableOpacity
+            onPress={pickImage}
+            style={styles.avatarContainer}
+            disabled={uploadingAvatar}
+          >
             <Image
+              key={form.image || doctor.image}
               source={{
-                uri: form.image || doctor.image || "https://picsum.photos/seed/doctor/200",
+                uri:
+                  form.image ||
+                  doctor.image ||
+                  "https://picsum.photos/seed/doctor/200",
               }}
               style={styles.avatar}
             />
-            <View style={styles.avatarBadge}>
-              <Ionicons name="camera" size={16} color="#fff" />
-            </View>
+            {uploadingAvatar ? (
+              <View style={styles.avatarOverlay}>
+                <ActivityIndicator color="#fff" />
+              </View>
+            ) : (
+              <View style={styles.avatarBadge}>
+                <Ionicons name="camera" size={16} color="#fff" />
+              </View>
+            )}
           </TouchableOpacity>
           <View style={styles.headerInfo}>
             <Text style={[styles.name, { color: colors.text }]}>
-              {doctor.first_name} {doctor.last_name}
+              {form.first_name} {form.last_name}
             </Text>
             <Text style={{ color: colors.secondaryText, fontSize: 14 }}>
-              {doctor.specialty || "Especialidad no especificada"}
+              {form.specialty || "Especialidad no especificada"}
             </Text>
             <View style={styles.ratingContainer}>
               <Ionicons name="star" size={16} color="#F59E0B" />
-              <Text style={[styles.ratingText, { color: colors.secondaryText }]}>
+              <Text
+                style={[styles.ratingText, { color: colors.secondaryText }]}
+              >
                 {doctor?.rating || 0} / 5
               </Text>
             </View>
           </View>
         </View>
 
-        {/* TABS */}
         <View style={styles.tabs}>
           {["perfil", "services", "posts"].map((t) => (
-            <TouchableOpacity 
-              key={t} 
+            <TouchableOpacity
+              key={t}
               onPress={() => setTab(t)}
               style={[
                 styles.tabButton,
-                tab === t && { backgroundColor: colors.green + '15' }
+                tab === t && { backgroundColor: colors.green + "15" },
               ]}
             >
               <Text
@@ -839,14 +1004,18 @@ export default function DoctorScreen() {
                     : [styles.tab, { color: colors.secondaryText }]
                 }
               >
-                {t === "perfil" ? "PERFIL" : t === "services" ? "SERVICIOS" : "POSTS"}
+                {t === "perfil"
+                  ? "PERFIL"
+                  : t === "services"
+                  ? "SERVICIOS"
+                  : "POSTS"}
               </Text>
             </TouchableOpacity>
           ))}
         </View>
       </View>
 
-      {/* FAB FLOTANTE */}
+      {/* FAB */}
       {(tab === "services" || tab === "posts") && (
         <TouchableOpacity
           style={[styles.fab, { backgroundColor: colors.green }]}
@@ -871,28 +1040,24 @@ export default function DoctorScreen() {
         </TouchableOpacity>
       )}
 
-      {/* SCROLLVIEW */}
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         refreshControl={
-          <RefreshControl 
-            refreshing={refreshing} 
+          <RefreshControl
+            refreshing={refreshing}
             onRefresh={onRefresh}
             tintColor={colors.green}
             colors={[colors.green]}
           />
         }
       >
-        {/* CONTENIDO SEGÚN TAB */}
         {renderContent()}
       </ScrollView>
 
-      {/* =========================================================
-          MODAL PARA SERVICIOS
-      ========================================================= */}
+      {/* MODAL SERVICIO */}
       <Modal
         visible={serviceModalVisible}
         transparent
@@ -900,11 +1065,13 @@ export default function DoctorScreen() {
         onRequestClose={resetServiceModal}
       >
         <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
-          <KeyboardAvoidingView 
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+            style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
           >
-            <View style={[styles.modalContainer, { backgroundColor: colors.card }]}>
+            <View
+              style={[styles.modalContainer, { backgroundColor: colors.card }]}
+            >
               <View style={styles.modalHeader}>
                 <Text style={[styles.modalTitle, { color: colors.text }]}>
                   {editingService ? "✏️ Editar servicio" : "➕ Nuevo servicio"}
@@ -913,17 +1080,32 @@ export default function DoctorScreen() {
                   <Ionicons name="close" size={24} color={colors.text} />
                 </TouchableOpacity>
               </View>
-              
+
               <TextInput
-                style={[styles.modalInput, { backgroundColor: colors.input, borderColor: colors.border, color: colors.text }]}
+                style={[
+                  styles.modalInput,
+                  {
+                    backgroundColor: colors.input,
+                    borderColor: colors.border,
+                    color: colors.text,
+                  },
+                ]}
                 placeholder="Nombre del servicio"
                 placeholderTextColor={colors.placeholder}
                 value={serviceName}
                 onChangeText={setServiceName}
               />
-              
+
               <TextInput
-                style={[styles.modalInput, styles.textArea, { backgroundColor: colors.input, borderColor: colors.border, color: colors.text }]}
+                style={[
+                  styles.modalInput,
+                  styles.textArea,
+                  {
+                    backgroundColor: colors.input,
+                    borderColor: colors.border,
+                    color: colors.text,
+                  },
+                ]}
                 placeholder="Descripción"
                 placeholderTextColor={colors.placeholder}
                 value={serviceDescription}
@@ -931,18 +1113,32 @@ export default function DoctorScreen() {
                 multiline
                 numberOfLines={3}
               />
-              
+
               <TextInput
-                style={[styles.modalInput, { backgroundColor: colors.input, borderColor: colors.border, color: colors.text }]}
+                style={[
+                  styles.modalInput,
+                  {
+                    backgroundColor: colors.input,
+                    borderColor: colors.border,
+                    color: colors.text,
+                  },
+                ]}
                 placeholder="Precio ($)"
                 placeholderTextColor={colors.placeholder}
                 value={servicePrice}
                 onChangeText={setServicePrice}
                 keyboardType="numeric"
               />
-              
+
               <TextInput
-                style={[styles.modalInput, { backgroundColor: colors.input, borderColor: colors.border, color: colors.text }]}
+                style={[
+                  styles.modalInput,
+                  {
+                    backgroundColor: colors.input,
+                    borderColor: colors.border,
+                    color: colors.text,
+                  },
+                ]}
                 placeholder="Duración (minutos)"
                 placeholderTextColor={colors.placeholder}
                 value={serviceDuration}
@@ -955,7 +1151,9 @@ export default function DoctorScreen() {
                   style={[styles.modalButton, styles.cancelModalButton]}
                   onPress={resetServiceModal}
                 >
-                  <Text style={[styles.modalButtonText, { color: "#333" }]}>Cancelar</Text>
+                  <Text style={[styles.modalButtonText, { color: "#333" }]}>
+                    Cancelar
+                  </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.modalButton, styles.saveModalButton]}
@@ -971,9 +1169,7 @@ export default function DoctorScreen() {
         </View>
       </Modal>
 
-      {/* =========================================================
-          MODAL PARA POSTS
-      ========================================================= */}
+      {/* MODAL POST */}
       <Modal
         visible={postModalVisible}
         transparent
@@ -981,11 +1177,13 @@ export default function DoctorScreen() {
         onRequestClose={resetPostModal}
       >
         <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
-          <KeyboardAvoidingView 
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+            style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
           >
-            <View style={[styles.modalContainer, { backgroundColor: colors.card }]}>
+            <View
+              style={[styles.modalContainer, { backgroundColor: colors.card }]}
+            >
               <View style={styles.modalHeader}>
                 <Text style={[styles.modalTitle, { color: colors.text }]}>
                   {editingPost ? "✏️ Editar post" : "➕ Nuevo post"}
@@ -994,17 +1192,32 @@ export default function DoctorScreen() {
                   <Ionicons name="close" size={24} color={colors.text} />
                 </TouchableOpacity>
               </View>
-              
+
               <TextInput
-                style={[styles.modalInput, { backgroundColor: colors.input, borderColor: colors.border, color: colors.text }]}
+                style={[
+                  styles.modalInput,
+                  {
+                    backgroundColor: colors.input,
+                    borderColor: colors.border,
+                    color: colors.text,
+                  },
+                ]}
                 placeholder="Título del post"
                 placeholderTextColor={colors.placeholder}
                 value={postTitle}
                 onChangeText={setPostTitle}
               />
-              
+
               <TextInput
-                style={[styles.modalInput, styles.textArea, { backgroundColor: colors.input, borderColor: colors.border, color: colors.text }]}
+                style={[
+                  styles.modalInput,
+                  styles.textArea,
+                  {
+                    backgroundColor: colors.input,
+                    borderColor: colors.border,
+                    color: colors.text,
+                  },
+                ]}
                 placeholder="Contenido del post"
                 placeholderTextColor={colors.placeholder}
                 value={postContent}
@@ -1018,7 +1231,9 @@ export default function DoctorScreen() {
                   style={[styles.modalButton, styles.cancelModalButton]}
                   onPress={resetPostModal}
                 >
-                  <Text style={[styles.modalButtonText, { color: "#333" }]}>Cancelar</Text>
+                  <Text style={[styles.modalButtonText, { color: "#333" }]}>
+                    Cancelar
+                  </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.modalButton, styles.saveModalButton]}
@@ -1034,9 +1249,7 @@ export default function DoctorScreen() {
         </View>
       </Modal>
 
-      {/* =========================================================
-          MODAL PARA COMENTARIOS
-      ========================================================= */}
+      {/* MODAL COMENTARIOS */}
       <Modal
         visible={commentModalVisible}
         transparent
@@ -1044,11 +1257,16 @@ export default function DoctorScreen() {
         onRequestClose={closeCommentModal}
       >
         <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
-          <KeyboardAvoidingView 
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+            style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
           >
-            <View style={[styles.modalContainer, { backgroundColor: colors.card, maxHeight: "80%" }]}>
+            <View
+              style={[
+                styles.modalContainer,
+                { backgroundColor: colors.card, maxHeight: "80%" },
+              ]}
+            >
               <View style={styles.modalHeader}>
                 <Text style={[styles.modalTitle, { color: colors.text }]}>
                   💬 Comentarios
@@ -1059,7 +1277,12 @@ export default function DoctorScreen() {
               </View>
 
               {activePost && (
-                <Text style={[styles.modalSubtitle, { color: colors.secondaryText }]}>
+                <Text
+                  style={[
+                    styles.modalSubtitle,
+                    { color: colors.secondaryText },
+                  ]}
+                >
                   {activePost.title}
                 </Text>
               )}
@@ -1070,7 +1293,12 @@ export default function DoctorScreen() {
                 renderItem={renderComment}
                 contentContainerStyle={styles.commentsList}
                 ListEmptyComponent={
-                  <Text style={[styles.emptyComments, { color: colors.secondaryText }]}>
+                  <Text
+                    style={[
+                      styles.emptyComments,
+                      { color: colors.secondaryText },
+                    ]}
+                  >
                     No hay comentarios aún. ¡Sé el primero!
                   </Text>
                 }
@@ -1099,7 +1327,9 @@ export default function DoctorScreen() {
                   style={[
                     styles.sendCommentButton,
                     {
-                      backgroundColor: commentText.trim() ? colors.green : colors.secondaryText,
+                      backgroundColor: commentText.trim()
+                        ? colors.green
+                        : colors.secondaryText,
                       opacity: commentText.trim() ? 1 : 0.5,
                     },
                   ]}
@@ -1117,54 +1347,27 @@ export default function DoctorScreen() {
   );
 }
 
-// =========================================================
-// STYLES
-// =========================================================
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    paddingBottom: 100,
-  },
+  container: { flex: 1 },
+  scrollView: { flex: 1 },
+  scrollContent: { flexGrow: 1, paddingBottom: 100 },
   center: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
     padding: 20,
   },
-  loadingContainer: {
-    paddingVertical: 20,
-    alignItems: "center",
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 14,
-  },
-  
-  // ✅ HEADER MEJORADO
+  loadingContainer: { paddingVertical: 20, alignItems: "center" },
+  loadingText: { marginTop: 12, fontSize: 14 },
+
   header: {
-    paddingTop: Platform.OS === 'android' ? 55 : 25,
+    paddingTop: Platform.OS === "android" ? 55 : 25,
     paddingHorizontal: 16,
     paddingBottom: 12,
     borderBottomWidth: 1,
   },
-  
-  headerTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 16,
-  },
-  
-  avatarContainer: {
-    position: "relative",
-    marginRight: 16,
-  },
-  
+  headerTop: { flexDirection: "row", alignItems: "center", paddingVertical: 16 },
+  avatarContainer: { position: "relative", marginRight: 16 },
   avatar: {
     width: 80,
     height: 80,
@@ -1172,7 +1375,17 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: "#22c55e",
   },
-  
+  avatarOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 40,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   avatarBadge: {
     position: "absolute",
     bottom: 0,
@@ -1183,33 +1396,16 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: "#fff",
   },
-  
-  headerInfo: {
-    flex: 1,
-  },
-  
-  name: {
-    fontSize: 20,
-    fontWeight: "bold",
-  },
-  
-  sub: {
-    marginTop: 4,
-    fontSize: 14,
-  },
-  
+  headerInfo: { flex: 1 },
+  name: { fontSize: 20, fontWeight: "bold" },
   ratingContainer: {
     flexDirection: "row",
     alignItems: "center",
     marginTop: 6,
     gap: 4,
   },
-  
-  ratingText: {
-    fontSize: 14,
-  },
-  
-  // ✅ TABS MEJORADOS
+  ratingText: { fontSize: 14 },
+
   tabs: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -1217,25 +1413,15 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.03)",
     borderRadius: 12,
   },
-  
   tabButton: {
     flex: 1,
     paddingVertical: 10,
     borderRadius: 10,
     alignItems: "center",
   },
-  
-  tab: {
-    fontSize: 14,
-    fontWeight: "500",
-  },
-  
-  activeTab: {
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  
-  // ✅ FAB FLOTANTE
+  tab: { fontSize: 14, fontWeight: "500" },
+  activeTab: { fontSize: 14, fontWeight: "700" },
+
   fab: {
     position: "absolute",
     right: 20,
@@ -1252,10 +1438,8 @@ const styles = StyleSheet.create({
     elevation: 6,
     zIndex: 10,
   },
-  
-  formContainer: {
-    padding: 16,
-  },
+
+  formContainer: { padding: 16 },
   input: {
     marginBottom: 12,
     padding: 14,
@@ -1263,10 +1447,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     fontSize: 15,
   },
-  textArea: {
-    minHeight: 80,
-    textAlignVertical: "top",
-  },
+  textArea: { minHeight: 80, textAlignVertical: "top" },
   saveBtn: {
     backgroundColor: "#16A34A",
     padding: 16,
@@ -1274,15 +1455,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 8,
   },
-  saveText: {
-    color: "#fff",
-    fontWeight: "bold",
-    fontSize: 16,
-  },
-  tabContent: {
-    padding: 16,
-    paddingBottom: 40,
-  },
+  saveText: { color: "#fff", fontWeight: "bold", fontSize: 16 },
+
+  tabContent: { padding: 16, paddingBottom: 40 },
   addButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -1294,10 +1469,8 @@ const styles = StyleSheet.create({
     borderStyle: "dashed",
     gap: 8,
   },
-  addButtonText: {
-    fontSize: 15,
-    fontWeight: "600",
-  },
+  addButtonText: { fontSize: 15, fontWeight: "600" },
+
   card: {
     marginBottom: 12,
     padding: 14,
@@ -1310,40 +1483,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 6,
   },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    flex: 1,
-  },
-  cardActions: {
-    flexDirection: "row",
-    gap: 12,
-    alignItems: "center",
-  },
-  actionButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  cardDescription: {
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 8,
-  },
+  cardTitle: { fontSize: 16, fontWeight: "600", flex: 1 },
+  cardActions: { flexDirection: "row", gap: 12, alignItems: "center" },
+  actionButton: { flexDirection: "row", alignItems: "center", gap: 4 },
+  cardDescription: { fontSize: 14, lineHeight: 20, marginBottom: 8 },
   cardFooter: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginTop: 4,
   },
-  price: {
-    fontWeight: "bold",
-    color: "#16A34A",
-    fontSize: 16,
-  },
-  duration: {
-    fontSize: 13,
-  },
+  price: { fontWeight: "bold", color: "#16A34A", fontSize: 16 },
+  duration: { fontSize: 13 },
   categoryBadge: {
     backgroundColor: "#22c55e20",
     paddingHorizontal: 10,
@@ -1352,31 +1503,14 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
     marginTop: 4,
   },
-  categoryText: {
-    color: "#22c55e",
-    fontSize: 12,
-    fontWeight: "500",
-  },
-  dateText: {
-    fontSize: 12,
-    marginTop: 6,
-  },
-  likeCount: {
-    fontSize: 12,
-    fontWeight: "500",
-  },
-  commentCount: {
-    fontSize: 12,
-    fontWeight: "500",
-  },
-  emptyContainer: {
-    alignItems: "center",
-    paddingVertical: 40,
-    gap: 12,
-  },
-  emptyText: {
-    fontSize: 16,
-  },
+  categoryText: { color: "#22c55e", fontSize: 12, fontWeight: "500" },
+  dateText: { fontSize: 12, marginTop: 6 },
+  likeCount: { fontSize: 12, fontWeight: "500" },
+  commentCount: { fontSize: 12, fontWeight: "500" },
+
+  emptyContainer: { alignItems: "center", paddingVertical: 40, gap: 12 },
+  emptyText: { fontSize: 16 },
+
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
@@ -1391,75 +1525,37 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     gap: 12,
   },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    textAlign: "center",
-    flex: 1,
-  },
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 8,
   },
-  modalSubtitle: {
-    fontSize: 14,
-    textAlign: "center",
-    marginBottom: 8,
-  },
+  modalTitle: { fontSize: 18, fontWeight: "bold", textAlign: "center", flex: 1 },
+  modalSubtitle: { fontSize: 14, textAlign: "center", marginBottom: 8 },
   modalInput: {
     borderWidth: 1,
     borderRadius: 10,
     padding: 12,
     fontSize: 15,
   },
-  modalButtons: {
-    flexDirection: "row",
-    gap: 12,
-    marginTop: 8,
-  },
+  modalButtons: { flexDirection: "row", gap: 12, marginTop: 8 },
   modalButton: {
     flex: 1,
     paddingVertical: 12,
     borderRadius: 10,
     alignItems: "center",
   },
-  cancelModalButton: {
-    backgroundColor: "#E5E7EB",
-  },
-  saveModalButton: {
-    backgroundColor: "#22c55e",
-  },
-  modalButtonText: {
-    color: "#fff",
-    fontWeight: "600",
-    fontSize: 15,
-  },
-  commentsList: {
-    paddingVertical: 8,
-  },
-  commentItem: {
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-  },
-  commentAuthor: {
-    fontWeight: "bold",
-    fontSize: 14,
-  },
-  commentContent: {
-    fontSize: 14,
-    marginTop: 2,
-  },
-  commentDate: {
-    fontSize: 10,
-    marginTop: 2,
-  },
-  emptyComments: {
-    textAlign: "center",
-    paddingVertical: 20,
-    fontSize: 14,
-  },
+  cancelModalButton: { backgroundColor: "#E5E7EB" },
+  saveModalButton: { backgroundColor: "#22c55e" },
+  modalButtonText: { color: "#fff", fontWeight: "600", fontSize: 15 },
+
+  commentsList: { paddingVertical: 8 },
+  commentItem: { paddingVertical: 10, borderBottomWidth: 1 },
+  commentAuthor: { fontWeight: "bold", fontSize: 14 },
+  commentContent: { fontSize: 14, marginTop: 2 },
+  commentDate: { fontSize: 10, marginTop: 2 },
+  emptyComments: { textAlign: "center", paddingVertical: 20, fontSize: 14 },
   commentInputContainer: {
     flexDirection: "row",
     alignItems: "flex-end",

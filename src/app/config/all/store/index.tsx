@@ -27,10 +27,6 @@ import { useDarkMode } from "../../../../context/app/DarkModeContext";
 import api from "../../../../utils/axios";
 
 export default function ShopScreen() {
-  /* =========================================================
-     DARK MODE
-  ========================================================= */
-
   const { darkMode } = useDarkMode();
 
   const colors = {
@@ -49,22 +45,14 @@ export default function ShopScreen() {
     overlay: darkMode ? "rgba(0,0,0,0.6)" : "rgba(0,0,0,0.4)",
   };
 
-  /* =========================================================
-     CONTEXTS
-  ========================================================= */
-
   const { user, me, loading: authLoading, updateAvatar } = useAuth();
   const { createProduct, updateProduct, deleteProduct } = useProducts();
-  const { shops, fetchShops, loading: shopsLoading } = useShops();
+  const { shop, fetchMyShop, loading: shopsLoading } = useShops();
 
-  /* =========================================================
-     STATES
-  ========================================================= */
-
-  const [shop, setShop] = useState<any>(null);
   const [tab, setTab] = useState<"perfil" | "productos">("perfil");
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [avatarVersion, setAvatarVersion] = useState(0);
 
   const [form, setForm] = useState({
     name: "",
@@ -75,10 +63,6 @@ export default function ShopScreen() {
     schedule: "",
   });
 
-  /* =========================================================
-     CREATE PRODUCT
-  ========================================================= */
-
   const [showModal, setShowModal] = useState(false);
   const [newProduct, setNewProduct] = useState({
     name: "",
@@ -88,36 +72,15 @@ export default function ShopScreen() {
     image: "",
   });
 
-  /* =========================================================
-     EDIT PRODUCT
-  ========================================================= */
-
   const [editModal, setEditModal] = useState(false);
   const [editProductState, setEditProductState] = useState<any>(null);
 
-  /* =========================================================
-     EFFECTS
-  ========================================================= */
-
-  // ✅ Asegurar que la lista de shops esté cargada
+  /* =========================
+     CARGAR MI TIENDA
+  ========================= */
   useEffect(() => {
-    if (!shops?.length) {
-      fetchShops();
-    }
+    fetchMyShop();
   }, []);
-
-  // ✅ Buscar mi tienda por user_id (con productos)
-  useEffect(() => {
-    if (!shops?.length || !user?.id) return;
-
-    const myShop = shops.find((s: any) => s.user_id === user.id);
-
-    if (myShop) {
-      console.log("🏪 [ShopScreen] Mi tienda:", myShop.name);
-      console.log("🛍️ [ShopScreen] Productos:", myShop.products?.length);
-      setShop(myShop);
-    }
-  }, [shops, user?.id]);
 
   useEffect(() => {
     if (shop) {
@@ -127,19 +90,18 @@ export default function ShopScreen() {
         address: shop.address || "",
         city: shop.city || "",
         phone: shop.phone || "",
-        schedule: shop.schedule || "",
+        schedule: (shop as any).schedule || "",
       });
     }
   }, [shop]);
 
-  /* =========================================================
+  /* =========================
      REFRESH
-  ========================================================= */
-
+  ========================= */
   const onRefresh = async () => {
     setRefreshing(true);
     try {
-      await fetchShops();
+      await fetchMyShop();
       await me();
     } catch (error) {
       console.error("Error al refrescar:", error);
@@ -148,10 +110,9 @@ export default function ShopScreen() {
     }
   };
 
-  /* =========================================================
-     IMAGE PICKER (PERFIL) — usa el AuthContext
-  ========================================================= */
-
+  /* =========================
+     AVATAR
+  ========================= */
   const pickProfileImage = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
@@ -166,28 +127,33 @@ export default function ShopScreen() {
       aspect: [1, 1],
     });
 
-    if (!result.canceled) {
-      try {
-        // ✅ updateAvatar del AuthContext → actualiza users.avatar + shops.image
-        const newAvatarUrl = await updateAvatar(result.assets[0].uri);
+    if (result.canceled) return;
 
-        // Refrescar shop + user para que se vea al instante
-        setShop((prev: any) => ({ ...prev, image: newAvatarUrl }));
-        await fetchShops();
-        await me();
+    try {
+      setLoading(true);
 
-        Alert.alert("✅ Éxito", "Foto actualizada correctamente");
-      } catch (error: any) {
-        console.error(error);
-        Alert.alert("❌ Error", error?.message || "No se pudo subir la imagen");
-      }
+      // ✅ updateAvatar → /auth/update-avatar
+      // Sincroniza users.avatar Y shops.image
+      const newAvatarUrl = await updateAvatar(result.assets[0].uri);
+      console.log("✅ Nueva URL del avatar:", newAvatarUrl);
+
+      setAvatarVersion((v) => v + 1);
+
+      await fetchMyShop();
+      await me();
+
+      Alert.alert("✅ Éxito", "Foto actualizada");
+    } catch (error: any) {
+      console.error(error);
+      Alert.alert("❌ Error", error?.message || "No se pudo subir la imagen");
+    } finally {
+      setLoading(false);
     }
   };
 
-  /* =========================================================
-     IMAGE PICKER (PRODUCTO)
-  ========================================================= */
-
+  /* =========================
+     IMAGEN PRODUCTO
+  ========================= */
   const pickProductImage = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
@@ -207,29 +173,42 @@ export default function ShopScreen() {
     }
   };
 
-  /* =========================================================
-     UPDATE SHOP
-  ========================================================= */
-
+  /* =========================
+     UPDATE SHOP — ✅ Solo campos editables
+  ========================= */
   const handleSubmit = async () => {
     if (!shop) return;
     try {
       setLoading(true);
-      await api.put(`/shops/${shop.id}`, form);
-      await fetchShops();
+
+      // ✅ Solo texto. La imagen la maneja /auth/update-avatar
+      const payload = {
+        name: form.name,
+        description: form.description,
+        address: form.address,
+        city: form.city,
+        phone: form.phone,
+        schedule: form.schedule,
+      };
+
+      await api.put(`/shops/${shop.id}`, payload);
+      await fetchMyShop();
       await me();
       Alert.alert("✅ Éxito", "Tienda actualizada");
-    } catch {
-      Alert.alert("❌ Error", "No se pudo actualizar");
+    } catch (err: any) {
+      console.error("❌ Error actualizando tienda:", err);
+      Alert.alert(
+        "❌ Error",
+        err?.response?.data?.message || err?.message || "No se pudo actualizar"
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  /* =========================================================
+  /* =========================
      CREATE PRODUCT
-  ========================================================= */
-
+  ========================= */
   const handleCreateProduct = async () => {
     if (!shop) return;
     if (!newProduct.name || !newProduct.price) {
@@ -248,19 +227,25 @@ export default function ShopScreen() {
       formData.append("store_id", String(shop.id));
 
       if (newProduct.image) {
+        const uriParts = newProduct.image.split("/");
+        const fileName = uriParts[uriParts.length - 1] || "product.jpg";
+        const ext = fileName.split(".").pop()?.toLowerCase() || "jpg";
+        const mime =
+          ext === "png"
+            ? "image/png"
+            : ext === "webp"
+            ? "image/webp"
+            : "image/jpeg";
+
         formData.append("image", {
           uri: newProduct.image,
-          name: "photo.jpg",
-          type: "image/jpeg",
+          name: fileName,
+          type: mime,
         } as any);
       }
 
-      const created = await createProduct(formData);
-
-      setShop((prev: any) => ({
-        ...prev,
-        products: [created, ...(prev.products || [])],
-      }));
+      await createProduct(formData);
+      await fetchMyShop();
 
       setShowModal(false);
       setNewProduct({
@@ -270,8 +255,6 @@ export default function ShopScreen() {
         stock: "",
         image: "",
       });
-
-      await fetchShops();
       Alert.alert("✅ Producto creado");
     } catch (error: any) {
       console.error(error);
@@ -284,10 +267,9 @@ export default function ShopScreen() {
     }
   };
 
-  /* =========================================================
+  /* =========================
      DELETE PRODUCT
-  ========================================================= */
-
+  ========================= */
   const handleDeleteProduct = async (productId: number) => {
     Alert.alert("Eliminar", "¿Seguro que quieres eliminar este producto?", [
       { text: "Cancelar", style: "cancel" },
@@ -297,11 +279,7 @@ export default function ShopScreen() {
         onPress: async () => {
           try {
             await deleteProduct(productId);
-            setShop((prev: any) => ({
-              ...prev,
-              products: prev.products.filter((p: any) => p.id !== productId),
-            }));
-            await fetchShops();
+            await fetchMyShop();
             Alert.alert("✅ Producto eliminado");
           } catch {
             Alert.alert("❌ Error eliminando");
@@ -311,32 +289,24 @@ export default function ShopScreen() {
     ]);
   };
 
-  /* =========================================================
+  /* =========================
      UPDATE PRODUCT
-  ========================================================= */
-
+  ========================= */
   const handleUpdateProduct = async () => {
     try {
-      const updated = await updateProduct(editProductState.id, editProductState);
-      setShop((prev: any) => ({
-        ...prev,
-        products: prev.products.map((p: any) =>
-          p.id === updated.id ? updated : p
-        ),
-      }));
+      await updateProduct(editProductState.id, editProductState);
+      await fetchMyShop();
       setEditModal(false);
       setEditProductState(null);
-      await fetchShops();
       Alert.alert("✅ Producto actualizado");
     } catch {
       Alert.alert("❌ Error actualizando");
     }
   };
 
-  /* =========================================================
+  /* =========================
      RENDER PRODUCTO
-  ========================================================= */
-
+  ========================= */
   const renderProduct = (p: any) => (
     <View
       key={p.id}
@@ -346,6 +316,7 @@ export default function ShopScreen() {
       ]}
     >
       <Image
+        key={p.image_url || p.image}
         source={{
           uri:
             p.image_url ||
@@ -358,7 +329,6 @@ export default function ShopScreen() {
 
       <View style={styles.cardContent}>
         <Text style={[styles.cardTitle, { color: colors.text }]}>{p.name}</Text>
-
         <Text
           style={{ color: colors.secondaryText, marginTop: 4, fontSize: 13 }}
           numberOfLines={2}
@@ -394,10 +364,9 @@ export default function ShopScreen() {
     </View>
   );
 
-  /* =========================================================
+  /* =========================
      LOADING
-  ========================================================= */
-
+  ========================= */
   if (authLoading || (shopsLoading && !shop)) {
     return (
       <View style={[styles.center, { backgroundColor: colors.background }]}>
@@ -414,10 +383,9 @@ export default function ShopScreen() {
     );
   }
 
-  /* =========================================================
+  /* =========================
      RENDER PRINCIPAL
-  ========================================================= */
-
+  ========================= */
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <StatusBar
@@ -432,9 +400,17 @@ export default function ShopScreen() {
         ]}
       >
         <View style={styles.headerTop}>
-          <TouchableOpacity onPress={pickProfileImage} style={styles.avatarContainer}>
+          <TouchableOpacity
+            onPress={pickProfileImage}
+            style={styles.avatarContainer}
+          >
             <Image
-              source={{ uri: shop.image || "https://picsum.photos/200" }}
+              key={`avatar-${avatarVersion}-${shop.image}`}
+              source={{
+                uri: shop.image
+                  ? `${shop.image}?t=${avatarVersion}`
+                  : "https://picsum.photos/200",
+              }}
               style={styles.avatar}
             />
             <View style={styles.avatarBadge}>
@@ -451,10 +427,10 @@ export default function ShopScreen() {
         </View>
 
         <View style={styles.tabs}>
-          {["perfil", "productos"].map((t) => (
+          {(["perfil", "productos"] as const).map((t) => (
             <TouchableOpacity
               key={t}
-              onPress={() => setTab(t as any)}
+              onPress={() => setTab(t)}
               style={[
                 styles.tabButton,
                 tab === t && { backgroundColor: colors.green + "15" },
@@ -504,7 +480,16 @@ export default function ShopScreen() {
               </Text>
             </View>
 
-            {Object.keys(form).map((field) => (
+            {(
+              [
+                "name",
+                "description",
+                "address",
+                "city",
+                "phone",
+                "schedule",
+              ] as const
+            ).map((field) => (
               <TextInput
                 key={field}
                 style={[
@@ -517,8 +502,9 @@ export default function ShopScreen() {
                 ]}
                 placeholder={field.charAt(0).toUpperCase() + field.slice(1)}
                 placeholderTextColor={colors.placeholder}
-                value={form[field as keyof typeof form]}
+                value={form[field]}
                 onChangeText={(t) => setForm({ ...form, [field]: t })}
+                multiline={field === "description"}
               />
             ))}
 
@@ -538,7 +524,7 @@ export default function ShopScreen() {
           <View style={styles.tabContent}>
             <View style={styles.sectionHeader}>
               <Text style={[styles.sectionTitle, { color: colors.text }]}>
-                🛍️ Productos
+                🛍️ Productos ({shop.products?.length || 0})
               </Text>
             </View>
 
@@ -566,7 +552,7 @@ export default function ShopScreen() {
         )}
       </ScrollView>
 
-      {/* ============ MODAL CREAR PRODUCTO ============ */}
+      {/* MODAL CREAR PRODUCTO */}
       <Modal
         visible={showModal}
         animationType="slide"
@@ -653,7 +639,10 @@ export default function ShopScreen() {
 
               <TouchableOpacity
                 onPress={pickProductImage}
-                style={[styles.imagePickerButton, { backgroundColor: colors.input }]}
+                style={[
+                  styles.imagePickerButton,
+                  { backgroundColor: colors.input },
+                ]}
               >
                 <Ionicons name="image-outline" size={20} color={colors.text} />
                 <Text style={{ color: colors.text, fontWeight: "600" }}>
@@ -668,15 +657,21 @@ export default function ShopScreen() {
                 />
               )}
 
-              <TouchableOpacity onPress={handleCreateProduct} style={styles.saveBtn}>
-                <Text style={styles.saveText}>✅ Guardar</Text>
+              <TouchableOpacity
+                onPress={handleCreateProduct}
+                style={styles.saveBtn}
+                disabled={loading}
+              >
+                <Text style={styles.saveText}>
+                  {loading ? "Guardando..." : "✅ Guardar"}
+                </Text>
               </TouchableOpacity>
             </ScrollView>
           </KeyboardAvoidingView>
         </View>
       </Modal>
 
-      {/* ============ MODAL EDITAR PRODUCTO ============ */}
+      {/* MODAL EDITAR PRODUCTO */}
       <Modal
         visible={editModal}
         animationType="slide"
@@ -732,8 +727,45 @@ export default function ShopScreen() {
                 placeholder="Descripción"
                 placeholderTextColor={colors.placeholder}
               />
+              <TextInput
+                style={[
+                  styles.input,
+                  {
+                    backgroundColor: colors.input,
+                    borderColor: colors.border,
+                    color: colors.text,
+                  },
+                ]}
+                value={String(editProductState?.price ?? "")}
+                onChangeText={(t) =>
+                  setEditProductState({ ...editProductState, price: t })
+                }
+                placeholder="Precio"
+                placeholderTextColor={colors.placeholder}
+                keyboardType="numeric"
+              />
+              <TextInput
+                style={[
+                  styles.input,
+                  {
+                    backgroundColor: colors.input,
+                    borderColor: colors.border,
+                    color: colors.text,
+                  },
+                ]}
+                value={String(editProductState?.stock ?? "")}
+                onChangeText={(t) =>
+                  setEditProductState({ ...editProductState, stock: t })
+                }
+                placeholder="Stock"
+                placeholderTextColor={colors.placeholder}
+                keyboardType="numeric"
+              />
 
-              <TouchableOpacity onPress={handleUpdateProduct} style={styles.saveBtn}>
+              <TouchableOpacity
+                onPress={handleUpdateProduct}
+                style={styles.saveBtn}
+              >
                 <Text style={styles.saveText}>💾 Guardar cambios</Text>
               </TouchableOpacity>
             </ScrollView>
@@ -753,11 +785,7 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     borderBottomWidth: 1,
   },
-  headerTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 16,
-  },
+  headerTop: { flexDirection: "row", alignItems: "center", paddingVertical: 16 },
   avatarContainer: { position: "relative", marginRight: 16 },
   avatar: {
     width: 80,

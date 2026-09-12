@@ -245,43 +245,41 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   /* =========================
      ME
   ========================= */
-  const me = async () => {
-    setLoading(true);
+ const me = async () => {
+  setLoading(true);
 
-    try {
-      await ensureToken();
-      const meResponse = await api.get("/auth/me");
-      const baseUserData = meResponse.data;
+  try {
+    await ensureToken();
+    const meResponse = await api.get("/auth/me");
+    const baseUserData = meResponse.data;
 
-      setBaseUser(baseUserData);
+    setBaseUser(baseUserData);
 
-      const profileResult = await loadProfile();
+    // ✅ Usar directamente lo que devuelve /auth/me (ya trae profile completo)
+    const userData = {
+      id: baseUserData.id,
+      name: baseUserData.name || "",
+      email: baseUserData.email || "",
+      phone: baseUserData.phone || "",
+      dni: baseUserData.dni || "",
+      address: baseUserData.address || "",
+      city: baseUserData.city || "",
+      sexo: baseUserData.sexo || "no_especificado",
+      profileType: baseUserData.profile_type || "user",   // ✅ viene del backend
+      profile: baseUserData.profile || null,              // ✅ viene con products/posts
+      avatar: baseUserData.avatar || null,
+      avatar_url: baseUserData.avatar_url || null,
+    };
 
-      const userData = {
-        id: baseUserData.id,
-        name: baseUserData.name || "",
-        email: baseUserData.email || "",
-        phone: baseUserData.phone || "",
-        dni: baseUserData.dni || "",
-        address: baseUserData.address || "",
-        city: baseUserData.city || "",
-        sexo: baseUserData.sexo || "no_especificado",
-        profileType: profileResult.type,
-        profile: profileResult.data,
-        avatar: baseUserData.avatar || null,
-        avatar_url: baseUserData.avatar_url || baseUserData.avatar || null,
-      };
-
-      setUser(userData);
-      await SecureStore.setItemAsync('user_data', JSON.stringify(userData));
-    } catch (error) {
-      console.log("❌ ME ERROR", error);
-      setUser(null);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+    setUser(userData);
+    await SecureStore.setItemAsync('user_data', JSON.stringify(userData));
+  } catch (error) {
+    console.log("❌ ME ERROR", error);
+    setUser(null);
+  } finally {
+    setLoading(false);
+  }
+};
   /* =========================
      RESTORE SESSION
   ========================= */
