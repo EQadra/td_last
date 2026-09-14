@@ -1,5 +1,5 @@
 // screens/LatestNews.tsx - COMPLETO CORREGIDO
-import React, {
+import {
   useCallback,
   useEffect,
   useState,
@@ -434,7 +434,7 @@ const LatestNews = () => {
   return (
     <View style={[styles.container, { backgroundColor: colors.card }]}>
       <Text style={[styles.title, { color: colors.text }]}>
-        📰 Noticias de mi rol
+        📰 Noticias
       </Text>
 
       <View style={styles.listContent}>

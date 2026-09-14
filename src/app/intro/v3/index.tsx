@@ -34,7 +34,7 @@ export default function ThirdView() {
         </View>
 
         <Image
-          source={require("../../../../assets/3.png")}
+          source={require("../../../assets/3.png")}
           style={styles.image}
           resizeMode="contain"
         />

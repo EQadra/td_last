@@ -24,7 +24,7 @@ const roles = [
   { 
     label: "Usuario", 
     value: "usuario", 
-    icon: require("../../../../assets/7.png"),
+    icon: require("../../../assets/7.png"),
     showGender: true,
     avatarMale: "https://tudealer.app/avatar_user.jpg",
     avatarFemale: "https://tudealer.app/avatar_usuaria.jpg",
@@ -33,7 +33,7 @@ const roles = [
   { 
     label: "Abogado", 
     value: "abogado", 
-    icon: require("../../../../assets/8.png"),
+    icon: require("../../../assets/8.png"),
     showGender: true,
     avatarMale: "https://tudealer.app/avatar_lawyer.jpg",
     avatarFemale: "https://tudealer.app/avatar_abogada.jpg",
@@ -42,7 +42,7 @@ const roles = [
   { 
     label: "Doctor / Veterinario", 
     value: "doctor", 
-    icon: require("../../../../assets/6.png"),
+    icon: require("../../../assets/6.png"),
     showGender: true,
     avatarMale: "https://tudealer.app/avatar_doctor.jpg",
     avatarFemale: "https://tudealer.app/avatar_doctora.jpg",
@@ -51,7 +51,7 @@ const roles = [
   { 
     label: "Asociación / Farmacia", 
     value: "asociacion", 
-    icon: require("../../../../assets/10.png"),
+    icon: require("../../../assets/10.png"),
     showGender: false,
     avatarMale: "https://tudealer.app/avatar_association.jpg",
     avatarFemale: "https://tudealer.app/avatar_association.jpg",
@@ -60,7 +60,7 @@ const roles = [
   { 
     label: "Tienda / Comercio", 
     value: "tienda", 
-    icon: require("../../../../assets/9.png"),
+    icon: require("../../../assets/9.png"),
     showGender: false,
     avatarMale: "https://tudealer.app/avatar_store.jpg",
     avatarFemale: "https://tudealer.app/avatar_store.jpg",
@@ -372,7 +372,7 @@ const SignupScreen = () => {
         >
           <View style={styles.logoContainer}>
             <Image
-              source={require("../../../../assets/logo.png")}
+              source={require("../../../assets/logo.png")}
               style={styles.logo}
             />
           </View>

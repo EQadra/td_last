@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -201,7 +201,7 @@ export default function LoginScreen(): JSX.Element {
         {/* LOGO */}
         <View style={styles.logoContainer}>
           <Image
-            source={require("../../../../assets/logo.png")}
+            source={require("../../../assets/logo.png")}
             style={styles.logo}
           />
         </View>

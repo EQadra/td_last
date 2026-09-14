@@ -1,20 +1,18 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   FlatList,
   Image,
-  KeyboardAvoidingView,
   Linking,
   Modal,
-  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 
 import { Ionicons } from "@expo/vector-icons";
@@ -704,20 +702,7 @@ const handleCreatePost = async () => {
           {/* ✅ BOTONES DE ACCIÓN PARA EL DUEÑO */}
           {isOwner && (
             <View style={styles.ownerActions}>
-              <TouchableOpacity
-                style={[styles.ownerButton, { backgroundColor: "#00B272" }]}
-                onPress={() => setCreatePostModalVisible(true)}
-              >
-                <Ionicons name="create-outline" size={18} color="#fff" />
-                <Text style={styles.ownerButtonText}>Crear Post</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.ownerButton, { backgroundColor: "#3B82F6" }]}
-                onPress={() => setCreateServiceModalVisible(true)}
-              >
-                <Ionicons name="construct-outline" size={18} color="#fff" />
-                <Text style={styles.ownerButtonText}>Crear Servicio</Text>
-              </TouchableOpacity>
+            
             </View>
           )}
         </View>
@@ -1183,189 +1168,6 @@ const handleCreatePost = async () => {
         </View>
       </Modal>
 
-      {/* ✅ MODAL - CREAR POST */}
-      <Modal visible={createPostModalVisible} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-            style={styles.keyboardView}
-          >
-            <View style={[styles.modalContent, styles.editModalContainer]}>
-              <View style={styles.editModalHeader}>
-                <Text style={styles.modalTitle}>📝 Crear Post</Text>
-                <TouchableOpacity onPress={() => setCreatePostModalVisible(false)}>
-                  <Ionicons name="close" size={24} color="#333" />
-                </TouchableOpacity>
-              </View>
-
-              <ScrollView showsVerticalScrollIndicator={false}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Título del post *"
-                  placeholderTextColor="#999"
-                  value={postTitle}
-                  onChangeText={setPostTitle}
-                />
-
-                <TextInput
-                  style={[styles.input, styles.textArea]}
-                  placeholder="Contenido *"
-                  placeholderTextColor="#999"
-                  value={postContent}
-                  onChangeText={setPostContent}
-                  multiline
-                  numberOfLines={5}
-                  textAlignVertical="top"
-                />
-
-                <TextInput
-                  style={styles.input}
-                  placeholder="Categoría (opcional)"
-                  placeholderTextColor="#999"
-                  value={postCategory}
-                  onChangeText={setPostCategory}
-                />
-
-                <TouchableOpacity
-                  style={styles.imagePickerButton}
-                  onPress={pickPostImage}
-                >
-                  <Ionicons name="image-outline" size={24} color="#00B272" />
-                  <Text style={styles.imagePickerText}>
-                    {postImage ? "🔄 Cambiar imagen" : "📷 Seleccionar imagen"}
-                  </Text>
-                </TouchableOpacity>
-
-                {postImage && (
-                  <Image source={{ uri: postImage }} style={styles.previewImage} />
-                )}
-
-                <View style={styles.commentModalActions}>
-                  <TouchableOpacity
-                    style={[styles.btn, styles.cancelModalBtn]}
-                    onPress={() => {
-                      setCreatePostModalVisible(false);
-                      setPostTitle("");
-                      setPostContent("");
-                      setPostImage(null);
-                      setPostCategory("");
-                    }}
-                  >
-                    <Text style={styles.btnText}>Cancelar</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.btn, styles.submitBtn]}
-                    onPress={handleCreatePost}
-                    disabled={!postTitle.trim() || !postContent.trim() || isSubmittingPost}
-                  >
-                    <Text style={styles.btnText}>
-                      {isSubmittingPost ? "Creando..." : "Publicar"}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </ScrollView>
-            </View>
-          </KeyboardAvoidingView>
-        </View>
-      </Modal>
-
-      {/* ✅ MODAL - CREAR SERVICIO */}
-      <Modal visible={createServiceModalVisible} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-            style={styles.keyboardView}
-          >
-            <View style={[styles.modalContent, styles.editModalContainer]}>
-              <View style={styles.editModalHeader}>
-                <Text style={styles.modalTitle}>💼 Crear Servicio</Text>
-                <TouchableOpacity onPress={() => setCreateServiceModalVisible(false)}>
-                  <Ionicons name="close" size={24} color="#333" />
-                </TouchableOpacity>
-              </View>
-
-              <ScrollView showsVerticalScrollIndicator={false}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Nombre del servicio *"
-                  placeholderTextColor="#999"
-                  value={serviceName}
-                  onChangeText={setServiceName}
-                />
-
-                <TextInput
-                  style={[styles.input, styles.textArea]}
-                  placeholder="Descripción"
-                  placeholderTextColor="#999"
-                  value={serviceDescription}
-                  onChangeText={setServiceDescription}
-                  multiline
-                  numberOfLines={4}
-                  textAlignVertical="top"
-                />
-
-                <View style={styles.row}>
-                  <TextInput
-                    style={[styles.input, styles.rowInput]}
-                    placeholder="Precio *"
-                    placeholderTextColor="#999"
-                    value={servicePrice}
-                    onChangeText={setServicePrice}
-                    keyboardType="numeric"
-                  />
-                  <TextInput
-                    style={[styles.input, styles.rowInput]}
-                    placeholder="Duración (min)"
-                    placeholderTextColor="#999"
-                    value={serviceDuration}
-                    onChangeText={setServiceDuration}
-                    keyboardType="numeric"
-                  />
-                </View>
-
-                <TouchableOpacity
-                  style={styles.imagePickerButton}
-                  onPress={pickServiceImage}
-                >
-                  <Ionicons name="image-outline" size={24} color="#00B272" />
-                  <Text style={styles.imagePickerText}>
-                    {serviceImage ? "🔄 Cambiar imagen" : "📷 Seleccionar imagen"}
-                  </Text>
-                </TouchableOpacity>
-
-                {serviceImage && (
-                  <Image source={{ uri: serviceImage }} style={styles.previewImage} />
-                )}
-
-                <View style={styles.commentModalActions}>
-                  <TouchableOpacity
-                    style={[styles.btn, styles.cancelModalBtn]}
-                    onPress={() => {
-                      setCreateServiceModalVisible(false);
-                      setServiceName("");
-                      setServiceDescription("");
-                      setServicePrice("");
-                      setServiceDuration("");
-                      setServiceImage(null);
-                    }}
-                  >
-                    <Text style={styles.btnText}>Cancelar</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.btn, styles.submitBtn]}
-                    onPress={handleCreateService}
-                    disabled={!serviceName.trim() || !servicePrice || isSubmittingService}
-                  >
-                    <Text style={styles.btnText}>
-                      {isSubmittingService ? "Creando..." : "Crear Servicio"}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </ScrollView>
-            </View>
-          </KeyboardAvoidingView>
-        </View>
-      </Modal>
     </View>
   );
 }

@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import { useState } from "react";
 import {
   FlatList,
   Image,
@@ -45,7 +45,7 @@ export default function CountrySelector() {
   return (
     <View style={styles.container}>
       <Image
-        source={require("../../../../assets/4.png")}
+        source={require("../../../assets/4.png")}
         style={styles.iconImage}
         resizeMode="contain"
       />

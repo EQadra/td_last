@@ -63,34 +63,25 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
-  const loadProfile = async () => {
-    await ensureToken();
-
-    const tryEndpoint = async (url: string, type: ProfileType) => {
-      try {
-        const res = await api.get(url);
-        return { type, data: res.data };
-      } catch (err: any) {
-        if (err.response?.status === 404) {
-          return null;
-        }
-        throw err;
-      }
+  /**
+   * Construye el userData desde la respuesta del backend
+   * (/auth/login, /auth/register, /auth/me) que YA trae profile_type y profile
+   */
+  const buildUserData = (baseUserData: any) => {
+    return {
+      id: baseUserData.id,
+      name: baseUserData.name || "",
+      email: baseUserData.email || "",
+      phone: baseUserData.phone || "",
+      dni: baseUserData.dni || "",
+      address: baseUserData.address || "",
+      city: baseUserData.city || "",
+      sexo: baseUserData.sexo || "no_especificado",
+      profileType: baseUserData.profile_type || "user",
+      profile: baseUserData.profile || null,
+      avatar: baseUserData.avatar || null,
+      avatar_url: baseUserData.avatar_url || null,
     };
-
-    const endpoints = [
-      ["/doctors/me", "doctor"],
-      ["/lawyers/me", "lawyer"],
-      ["/associations/me", "association"],
-      ["/shops/me", "shop"],
-    ] as [string, ProfileType][];
-
-    for (const [url, type] of endpoints) {
-      const result = await tryEndpoint(url, type);
-      if (result) return result;
-    }
-
-    return { type: "user", data: null };
   };
 
   /* =========================
@@ -115,29 +106,23 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
 
       try {
-        const response = await api.get('/auth/me');
+        const response = await api.get("/auth/me");
         if (response.data) {
-          const userData = {
-            id: response.data.id,
-            name: response.data.name || '',
-            email: response.data.email || '',
-            phone: response.data.phone || '',
-            dni: response.data.dni || '',
-            address: response.data.address || '',
-            city: response.data.city || '',
-            sexo: response.data.sexo || 'no_especificado',
-            profileType: response.data.profile_type || 'user',
-            profile: response.data.profile || null,
-            avatar: response.data.avatar || null,
-            avatar_url: response.data.avatar_url || null,
-          };
+          const userData = buildUserData(response.data);
+
+          console.log(
+            "✅ [checkAuth] profile_type:",
+            userData.profileType,
+            "| tiene profile:",
+            !!userData.profile
+          );
 
           setUser(userData);
-          await SecureStore.setItemAsync('user_data', JSON.stringify(userData));
+          await SecureStore.setItemAsync("user_data", JSON.stringify(userData));
           return true;
         }
       } catch (error: any) {
-        console.error('❌ Error obteniendo usuario:', error);
+        console.error("❌ Error obteniendo usuario:", error);
 
         if (error.response?.status === 401) {
           await setAuthToken(null);
@@ -150,7 +135,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
       return false;
     } catch (error) {
-      console.error('❌ Error en checkAuth:', error);
+      console.error("❌ Error en checkAuth:", error);
       await setAuthToken(null);
       setUser(null);
       return false;
@@ -160,7 +145,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   /* =========================
      LOGIN
   ========================= */
-  const login = async (email: string, password: string, rememberMe: boolean = true) => {
+  const login = async (
+    email: string,
+    password: string,
+    rememberMe: boolean = true
+  ) => {
     setLoading(true);
 
     try {
@@ -175,25 +164,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       await setAuthToken(access_token, expires_in);
       setBaseUser(baseUserData);
 
-      const profileResult = await loadProfile();
+      // ✅ Usar directamente lo que devuelve /auth/login
+      const userData = buildUserData(baseUserData);
 
-      const userData = {
-        id: baseUserData.id,
-        name: baseUserData.name || "",
-        email: baseUserData.email || "",
-        phone: baseUserData.phone || "",
-        dni: baseUserData.dni || "",
-        address: baseUserData.address || "",
-        city: baseUserData.city || "",
-        sexo: baseUserData.sexo || "no_especificado",
-        profileType: profileResult.type,
-        profile: profileResult.data,
-        avatar: baseUserData.avatar || null,
-        avatar_url: baseUserData.avatar_url || baseUserData.avatar || null,
-      };
+      console.log(
+        "✅ [login] profile_type:",
+        userData.profileType,
+        "| tiene profile:",
+        !!userData.profile
+      );
 
       setUser(userData);
-      await SecureStore.setItemAsync('user_data', JSON.stringify(userData));
+      await SecureStore.setItemAsync("user_data", JSON.stringify(userData));
     } catch (error: any) {
       console.log("❌ LOGIN ERROR", error.response?.data || error.message);
       throw error;
@@ -215,25 +197,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       await setAuthToken(access_token, expires_in);
       setBaseUser(baseUserData);
 
-      const profileResult = await loadProfile();
-
-      const userData = {
-        id: baseUserData.id,
-        name: baseUserData.name || "",
-        email: baseUserData.email || "",
-        phone: baseUserData.phone || "",
-        dni: baseUserData.dni || "",
-        address: baseUserData.address || "",
-        city: baseUserData.city || "",
-        sexo: baseUserData.sexo || "no_especificado",
-        profileType: profileResult.type,
-        profile: profileResult.data,
-        avatar: baseUserData.avatar || null,
-        avatar_url: baseUserData.avatar_url || baseUserData.avatar || null,
-      };
+      // ✅ Usar directamente lo que devuelve /auth/register
+      const userData = buildUserData(baseUserData);
 
       setUser(userData);
-      await SecureStore.setItemAsync('user_data', JSON.stringify(userData));
+      await SecureStore.setItemAsync("user_data", JSON.stringify(userData));
     } catch (error: any) {
       console.log("❌ REGISTER ERROR", error.response?.data || error.message);
       throw error;
@@ -245,41 +213,36 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   /* =========================
      ME
   ========================= */
- const me = async () => {
-  setLoading(true);
+  const me = async () => {
+    setLoading(true);
 
-  try {
-    await ensureToken();
-    const meResponse = await api.get("/auth/me");
-    const baseUserData = meResponse.data;
+    try {
+      await ensureToken();
+      const meResponse = await api.get("/auth/me");
+      const baseUserData = meResponse.data;
 
-    setBaseUser(baseUserData);
+      setBaseUser(baseUserData);
 
-    // ✅ Usar directamente lo que devuelve /auth/me (ya trae profile completo)
-    const userData = {
-      id: baseUserData.id,
-      name: baseUserData.name || "",
-      email: baseUserData.email || "",
-      phone: baseUserData.phone || "",
-      dni: baseUserData.dni || "",
-      address: baseUserData.address || "",
-      city: baseUserData.city || "",
-      sexo: baseUserData.sexo || "no_especificado",
-      profileType: baseUserData.profile_type || "user",   // ✅ viene del backend
-      profile: baseUserData.profile || null,              // ✅ viene con products/posts
-      avatar: baseUserData.avatar || null,
-      avatar_url: baseUserData.avatar_url || null,
-    };
+      // ✅ Usar directamente lo que devuelve /auth/me
+      const userData = buildUserData(baseUserData);
 
-    setUser(userData);
-    await SecureStore.setItemAsync('user_data', JSON.stringify(userData));
-  } catch (error) {
-    console.log("❌ ME ERROR", error);
-    setUser(null);
-  } finally {
-    setLoading(false);
-  }
-};
+      console.log(
+        "✅ [me] profile_type:",
+        userData.profileType,
+        "| tiene profile:",
+        !!userData.profile
+      );
+
+      setUser(userData);
+      await SecureStore.setItemAsync("user_data", JSON.stringify(userData));
+    } catch (error) {
+      console.log("❌ ME ERROR", error);
+      setUser(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   /* =========================
      RESTORE SESSION
   ========================= */
@@ -327,32 +290,30 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   /* =========================
      LOGOUT
   ========================= */
-const logout = async () => {
-  console.log("🚪 LOGOUT INICIADO");
+  const logout = async () => {
+    console.log("🚪 LOGOUT INICIADO");
 
-  try {
-    await SecureStore.deleteItemAsync("token");
-    await SecureStore.deleteItemAsync("token_expiration");
-    await SecureStore.deleteItemAsync("user_data");
-    console.log("✅ SecureStore limpio");
-  } catch (error) {
-    console.log("❌ Error borrando SecureStore:", error);
-  }
+    try {
+      await SecureStore.deleteItemAsync("token");
+      await SecureStore.deleteItemAsync("token_expiration");
+      await SecureStore.deleteItemAsync("user_data");
+      console.log("✅ SecureStore limpio");
+    } catch (error) {
+      console.log("❌ Error borrando SecureStore:", error);
+    }
 
-  await setAuthToken(null);
-  setUser(null);
-  setBaseUser(null);
-  console.log("✅ Estado limpiado");
+    await setAuthToken(null);
+    setUser(null);
+    setBaseUser(null);
+    console.log("✅ Estado limpiado");
 
-  try {
-    await api.post("/auth/logout");
-    console.log("✅ Backend logout OK");
-  } catch (error) {
-    console.log("❌ Logout backend error (ignorado):", error);
-  }
-
-  // ⚠️ NO navegar aquí: el guard de _layout.tsx redirige solo
-};
+    try {
+      await api.post("/auth/logout");
+      console.log("✅ Backend logout OK");
+    } catch (error) {
+      console.log("❌ Logout backend error (ignorado):", error);
+    }
+  };
 
   /* =========================
      UPDATE PROFILE
@@ -397,41 +358,43 @@ const logout = async () => {
       await ensureToken();
 
       const formData = new FormData();
-      formData.append('avatar', {
+      formData.append("avatar", {
         uri: imageUri,
-        name: 'avatar.jpg',
-        type: 'image/jpeg',
+        name: "avatar.jpg",
+        type: "image/jpeg",
       } as any);
 
-      const response = await api.post('/auth/update-avatar', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+      const response = await api.post("/auth/update-avatar", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
       });
 
       const { avatar } = response.data.data;
 
-      setUser((prev) => prev ? { ...prev, avatar, avatar_url: avatar } : null);
+      setUser((prev) => (prev ? { ...prev, avatar, avatar_url: avatar } : null));
       setBaseUser((prev: any) => ({ ...prev, avatar, avatar_url: avatar }));
 
       refreshAvatar();
       return avatar;
     } catch (error: any) {
-      console.error('❌ Error al actualizar avatar:', error);
-      throw new Error(error.response?.data?.message || 'Error al actualizar avatar');
+      console.error("❌ Error al actualizar avatar:", error);
+      throw new Error(error.response?.data?.message || "Error al actualizar avatar");
     }
   };
 
   const deleteAvatar = async (): Promise<void> => {
     try {
       await ensureToken();
-      await api.delete('/auth/delete-avatar');
+      await api.delete("/auth/delete-avatar");
 
-      setUser((prev) => prev ? { ...prev, avatar: null, avatar_url: null } : null);
+      setUser((prev) =>
+        prev ? { ...prev, avatar: null, avatar_url: null } : null
+      );
       setBaseUser((prev: any) => ({ ...prev, avatar: null, avatar_url: null }));
 
       refreshAvatar();
     } catch (error: any) {
-      console.error('❌ Error al eliminar avatar:', error);
-      throw new Error(error.response?.data?.message || 'Error al eliminar avatar');
+      console.error("❌ Error al eliminar avatar:", error);
+      throw new Error(error.response?.data?.message || "Error al eliminar avatar");
     }
   };
 

@@ -904,6 +904,7 @@ const styles = StyleSheet.create({
   },
 
   saveBtn: {
+    marginBottom: 30,
     backgroundColor: "#16A34A",
     marginVertical: 10,
     padding: 16,

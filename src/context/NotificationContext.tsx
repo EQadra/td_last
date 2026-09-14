@@ -1,6 +1,6 @@
 // context/NotificationContext.tsx
 import * as SecureStore from 'expo-secure-store';
-import React, { createContext, ReactNode, useContext, useEffect, useState } from 'react';
+import { createContext, ReactNode, useContext, useEffect, useState } from 'react';
 import api, { setAuthToken } from "../utils/axios";
 
 export interface Notification {
@@ -23,6 +23,7 @@ interface NotificationsContextProps {
   markAllAsRead: () => Promise<void>;
   addNotification: (notification: Notification) => void;
 }
+const READ_KEY = 'notifications_read_ids';
 
 const NotificationsContext = createContext<NotificationsContextProps>(
   {} as NotificationsContextProps
@@ -55,84 +56,64 @@ export const NotificationsProvider = ({ children }: { children: ReactNode }) => 
   };
 
   // Cargar notificaciones del usuario
-  const fetchNotifications = async () => {
-    setLoading(true);
-    try {
-      await ensureToken();
-      
-      // Obtener feedbacks recientes
-      let feedbacks: any[] = [];
-      try {
-        const res = await api.get('/feedbacks');
-        feedbacks = extractData(res.data);
-        console.log('📊 Feedbacks obtenidos:', feedbacks.length);
-      } catch (err) {
-        console.log('Error fetching feedbacks:', err);
-        feedbacks = [];
-      }
+// Cargar notificaciones del usuario
+const fetchNotifications = async () => {
+  setLoading(true);
+  try {
+    await ensureToken();
 
-      // Obtener comentarios recientes
-      let comments: any[] = [];
-      try {
-        const commentsRes = await api.get('/comments');
-        comments = extractData(commentsRes.data);
-        console.log('📊 Comentarios obtenidos:', comments.length);
-      } catch (err) {
-        console.log('Error fetching comments:', err);
-        comments = [];
-      }
+    const res = await api.get('/notifications');
+    const data = extractData(res.data);
 
-      // Transformar feedbacks a notificaciones
-      const feedbackNotifications: Notification[] = feedbacks.map((f: any) => ({
-        id: `feedback-${f.id || Date.now()}`,
-        title: `Nueva reseña de ${f.user?.name || 'Usuario'}`,
-        message: f.comment || `Te calificaron con ${f.rating || 0} estrellas`,
-        time: f.created_at ? new Date(f.created_at).toLocaleString() : new Date().toLocaleString(),
-        type: 'feedback',
-        read: false,
-        data: f,
-        created_at: f.created_at || new Date().toISOString(),
-      }));
+    console.log('📊 Notificaciones obtenidas:', data.length);
 
-      // Transformar comentarios a notificaciones
-      const commentNotifications: Notification[] = comments.map((c: any) => ({
-        id: `comment-${c.id || Date.now()}`,
-        title: `Nuevo comentario de ${c.user?.name || 'Usuario'}`,
-        message: c.content || '',
-        time: c.created_at ? new Date(c.created_at).toLocaleString() : new Date().toLocaleString(),
-        type: 'comment',
-        read: false,
-        data: c,
-        created_at: c.created_at || new Date().toISOString(),
-      }));
+    // El backend ya devuelve el formato correcto
+    const parsed: Notification[] = data.map((n: any) => ({
+      id: n.id,
+      title: n.title,
+      message: n.message,
+      time: n.time || new Date(n.created_at).toLocaleString(),
+      type: n.type,
+      read: n.read ?? false,
+      data: n.data,
+      created_at: n.created_at,
+    }));
 
-      // Combinar y ordenar por fecha (más reciente primero)
-      const all = [...feedbackNotifications, ...commentNotifications];
-      all.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    setNotifications(parsed);
+  } catch (error) {
+    console.error('Error fetching notifications:', error);
+    setNotifications([]);
+  } finally {
+    setLoading(false);
+  }
+};
 
-      console.log('📊 Total notificaciones:', all.length);
-      setNotifications(all);
-    } catch (error) {
-      console.error('Error fetching notifications:', error);
-      setNotifications([]);
-    } finally {
-      setLoading(false);
+ const markAsRead = async (id: string) => {
+  setNotifications(prev =>
+    prev.map(n => n.id === id ? { ...n, read: true } : n)
+  );
+  // Guardar en SecureStore
+  try {
+    const stored = await SecureStore.getItemAsync(READ_KEY);
+    const ids: string[] = stored ? JSON.parse(stored) : [];
+    if (!ids.includes(id)) {
+      ids.push(id);
+      await SecureStore.setItemAsync(READ_KEY, JSON.stringify(ids));
     }
-  };
+  } catch (e) {
+    console.warn('Error guardando read:', e);
+  }
+};
 
-  // Marcar como leída
-  const markAsRead = async (id: string) => {
-    setNotifications(prev =>
-      prev.map(n => n.id === id ? { ...n, read: true } : n)
-    );
-  };
-
-  // Marcar todas como leídas
-  const markAllAsRead = async () => {
-    setNotifications(prev =>
-      prev.map(n => ({ ...n, read: true }))
-    );
-  };
+const markAllAsRead = async () => {
+  const allIds = notifications.map(n => n.id);
+  setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+  try {
+    await SecureStore.setItemAsync(READ_KEY, JSON.stringify(allIds));
+  } catch (e) {
+    console.warn('Error guardando read all:', e);
+  }
+};
 
   // Agregar notificación en tiempo real
   const addNotification = (notification: Notification) => {

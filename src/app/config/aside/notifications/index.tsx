@@ -1,5 +1,5 @@
 // src/app/config/aside/notifications/index.tsx - COMPLETO
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -262,6 +262,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     textAlign: 'center',
+    marginTop: 10,
     fontSize: 18,
     fontWeight: '700',
   },

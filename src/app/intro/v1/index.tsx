@@ -34,7 +34,7 @@ export default function FirstView() {
         </View>
 
         <Image
-          source={require("../../../../assets/1.png")}
+          source={require("../../../assets/1.png")}
           style={styles.image}
           resizeMode="contain"
         />

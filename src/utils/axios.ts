@@ -4,8 +4,11 @@ import axios, { AxiosError, AxiosInstance } from 'axios';
 import * as SecureStore from 'expo-secure-store';
 
 // ✅ DEVELOPMENT — IP actual del backend
-export const BASE_URL = 'http://10.23.248.82:8000/api';
-export const IMAGE_BASE_URL = 'http://10.23.248.82:8000';
+// export const BASE_URL = 'http://192.168.1.50:8000/api';
+// export const IMAGE_BASE_URL = 'http://192.168.1.50:8000';
+
+export const BASE_URL = 'https://apiapk.tudealer.app/api';
+export const IMAGE_BASE_URL = 'https://apiapk.tudealer.app';
 
 let memoryToken: string | null = null;
 let tokenExpiration: number | null = null;

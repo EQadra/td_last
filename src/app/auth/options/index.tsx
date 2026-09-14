@@ -1,5 +1,5 @@
-import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { Link } from 'expo-router';
+import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 export default function WelcomeScreen() {
   return (
@@ -7,7 +7,7 @@ export default function WelcomeScreen() {
       {/* Logo circular con fondo verde oscuro */}
       <View style={styles.logoContainer}>
         <Image
-          source={require('../../../../assets/logo.png')}
+          source={require('../../../assets/logo.png')}
           style={styles.logo}
         />
       </View>

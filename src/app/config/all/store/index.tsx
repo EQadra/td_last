@@ -854,6 +854,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   saveBtn: {
+    marginBottom: 30,
     backgroundColor: "#16A34A",
     padding: 16,
     borderRadius: 12,

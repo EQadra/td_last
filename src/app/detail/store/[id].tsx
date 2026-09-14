@@ -1,9 +1,11 @@
+// screens/StoreDetailScreen.tsx - SOLO PERFIL, PRODUCTOS Y POSTS
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   FlatList,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Linking,
   Modal,
@@ -14,27 +16,43 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   View,
 } from "react-native";
 
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams } from "expo-router";
-import { useAssociations } from "../../../context/AssociationContext";
 import { useAuth } from "../../../context/AuthContext";
 import { useComments } from "../../../context/CommentContext";
-import { usePosts } from "../../../context/PostContext";
+import { useNewsRole } from "../../../context/NewsRoleContext";
 import { useProducts } from "../../../context/ProductContext";
-import { useServices } from "../../../context/ServiceContext";
+import { useShops } from "../../../context/ShopContext";
 import api from "../../../utils/axios";
 
-export default function AssociationDetailScreen() {
+export default function StoreDetailScreen() {
   const { id } = useLocalSearchParams();
   const { user } = useAuth();
-  const { fetchAssociationById } = useAssociations();
-  const { createPost, toggleLike } = usePosts();
-  const { createService } = useServices();
-  const { createProduct, updateProduct, deleteProduct } = useProducts();
+
+  const {
+    shops,
+    loading: shopLoading,
+    fetchShops,
+  } = useShops();
+
+  const {
+    products,
+    loading: productLoading,
+    fetchProducts,
+  } = useProducts();
+
+  // ✅ CORRECTO: usamos el context real
+  const {
+    latestNews: news,
+    loading: newsLoading,
+    fetchLatestNews: fetchNews,
+    createNews,
+  } = useNewsRole();
 
   const {
     loading: commentsLoading,
@@ -46,39 +64,35 @@ export default function AssociationDetailScreen() {
     deleteProductComment,
   } = useComments();
 
-  const [association, setAssociation] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState("sobre");
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState("perfil");
   const [isOwner, setIsOwner] = useState(false);
 
-  // Carrito
+  // ============ ESTADOS DEL CARRITO ============
   const [cartModalVisible, setCartModalVisible] = useState(false);
   const [cartItems, setCartItems] = useState<{ product: any; quantity: number }[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
   const [quantityModalVisible, setQuantityModalVisible] = useState(false);
   const [selectedQuantity, setSelectedQuantity] = useState(1);
 
-  // Comentarios
-  const [commentText, setCommentText] = useState("");
-  const [commentingPostId, setCommentingPostId] = useState<number | null>(null);
-  const [commentingProductId, setCommentingProductId] = useState<number | null>(null);
+  // Estados para comentarios
   const [showCommentsFor, setShowCommentsFor] = useState<{ type: "post" | "product"; id: number } | null>(null);
   const [postComments, setPostComments] = useState<Record<number, any[]>>({});
   const [productComments, setProductComments] = useState<Record<number, any[]>>({});
 
+  // Modal para agregar comentario
   const [commentModalVisible, setCommentModalVisible] = useState(false);
   const [commentModalType, setCommentModalType] = useState<"post" | "product" | null>(null);
   const [commentModalId, setCommentModalId] = useState<number | null>(null);
   const [commentModalText, setCommentModalText] = useState("");
 
-  // Feedback
+  // Modal para feedback
   const [feedbackModalVisible, setFeedbackModalVisible] = useState(false);
   const [feedbackRating, setFeedbackRating] = useState(0);
   const [feedbackComment, setFeedbackComment] = useState("");
   const [submittingFeedback, setSubmittingFeedback] = useState(false);
 
-  // Crear post
+  // ✅ ESTADOS PARA CREAR POST
   const [createPostModalVisible, setCreatePostModalVisible] = useState(false);
   const [postTitle, setPostTitle] = useState("");
   const [postContent, setPostContent] = useState("");
@@ -86,62 +100,75 @@ export default function AssociationDetailScreen() {
   const [postCategory, setPostCategory] = useState("");
   const [isSubmittingPost, setIsSubmittingPost] = useState(false);
 
-  // Crear servicio
-  const [createServiceModalVisible, setCreateServiceModalVisible] = useState(false);
-  const [serviceName, setServiceName] = useState("");
-  const [serviceDescription, setServiceDescription] = useState("");
-  const [servicePrice, setServicePrice] = useState("");
-  const [serviceDuration, setServiceDuration] = useState("");
-  const [serviceImage, setServiceImage] = useState<string | null>(null);
-  const [isSubmittingService, setIsSubmittingService] = useState(false);
-
-  // Crear/editar producto
-  const [productModalVisible, setProductModalVisible] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<any>(null);
-  const [productName, setProductName] = useState("");
-  const [productDescription, setProductDescription] = useState("");
-  const [productPrice, setProductPrice] = useState("");
-  const [productStock, setProductStock] = useState("");
-  const [productImage, setProductImage] = useState<any>(null);
-  const [isSubmittingProduct, setIsSubmittingProduct] = useState(false);
-
+  // Número de WhatsApp
   const WHATSAPP_NUMBER = "+51933933002";
 
+  // ============ CARGAR DATOS ============
   useEffect(() => {
-    if (user && association) {
-      setIsOwner(user.id === association.user_id);
+    fetchShops();
+    fetchProducts();
+    fetchNews();
+  }, []);
+
+  const loading = shopLoading || productLoading || newsLoading;
+
+  // SHOP
+  const shop = useMemo(() => {
+    if (!shops) return null;
+
+    let shopsArray = [];
+    if (Array.isArray(shops)) {
+      shopsArray = shops;
+    } else if (shops?.data) {
+      shopsArray = Array.isArray(shops.data) ? shops.data : [];
+    } else if (shops?.data?.data) {
+      shopsArray = Array.isArray(shops.data.data) ? shops.data.data : [];
     }
-  }, [user, association]);
 
+    return shopsArray.find((s) => Number(s.id) === Number(id)) || null;
+  }, [shops, id]);
+
+  // ✅ VERIFICAR SI EL USUARIO ES DUEÑO DE LA TIENDA
   useEffect(() => {
-    const loadAssociation = async () => {
-      const associationId = Array.isArray(id) ? id[0] : id;
-      console.log("🔄 Cargando asociación ID:", associationId);
-      try {
-        const data = await fetchAssociationById(Number(associationId));
-        if (data) setAssociation(data);
-      } catch (error) {
-        console.error("❌ Error cargando asociación:", error);
-        Alert.alert("Error", "No se pudo cargar la asociación");
-      } finally {
-        setLoading(false);
-      }
-    };
-    if (id) loadAssociation();
-  }, [id]);
+    if (user && shop) {
+      setIsOwner(user.id === shop.user_id);
+    }
+  }, [user, shop]);
 
+  // PRODUCTOS
+  const shopProducts = useMemo(() => {
+    if (!products || !Array.isArray(products)) return [];
+    return products.filter(
+      (item) =>
+        Number(item.productable_id) === Number(id) &&
+        item.productable_type === "App\\Models\\Shop"
+    );
+  }, [products, id]);
+
+  // NEWS (POSTS)
+  const shopNews = useMemo(() => {
+    if (!news || !Array.isArray(news)) return [];
+    return news.filter(
+      (item) =>
+        Number(item.newable_id) === Number(id) &&
+        item.newable_type === "App\\Models\\Shop"
+    );
+  }, [news, id]);
+
+  // RATING
   const rating = useMemo(() => {
-    if (!association?.feedbacks?.length) return 0;
-    const total = association.feedbacks.reduce((acc: number, f: any) => acc + Number(f.rating), 0);
-    return total / association.feedbacks.length;
-  }, [association]);
+    if (!shop?.feedbacks?.length) return 0;
+    const total = shop.feedbacks.reduce((acc, f) => acc + Number(f.rating), 0);
+    return total / shop.feedbacks.length;
+  }, [shop]);
 
+  // ============ REFRESH ============
   const onRefresh = async () => {
     setRefreshing(true);
-    const associationId = Array.isArray(id) ? id[0] : id;
     try {
-      const data = await fetchAssociationById(Number(associationId));
-      if (data) setAssociation(data);
+      await fetchShops();
+      await fetchProducts();
+      await fetchNews();
     } catch (error) {
       console.error("❌ Error refrescando:", error);
     } finally {
@@ -149,7 +176,78 @@ export default function AssociationDetailScreen() {
     }
   };
 
-  // ==================== CARRITO ====================
+  // ============================================================
+  // ✅ FUNCIONES PARA CREAR POST - CORREGIDAS (usa createNews)
+  // ============================================================
+  const pickPostImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permiso denegado", "Necesitamos acceso a tu galería");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [16, 9],
+      quality: 0.8,
+      base64: false,
+    });
+
+    if (!result.canceled) {
+      console.log("📸 Imagen seleccionada para post:", {
+        uri: result.assets[0].uri,
+        width: result.assets[0].width,
+        height: result.assets[0].height,
+      });
+      setPostImage(result.assets[0].uri);
+    }
+  };
+
+  const handleCreatePost = async () => {
+    if (!postTitle.trim() || !postContent.trim()) {
+      Alert.alert("Error", "Título y contenido son obligatorios");
+      return;
+    }
+
+    if (!shop || !shop.id) {
+      Alert.alert("Error", "No se encontró la tienda");
+      return;
+    }
+
+    setIsSubmittingPost(true);
+
+    try {
+      // createNews detecta automáticamente el Shop del usuario logueado
+      const imageAsset = postImage ? { uri: postImage } : null;
+
+      await createNews(
+        {
+          titulo: postTitle.trim(),
+          descripcion: postContent.trim(),
+        },
+        imageAsset
+      );
+
+      Alert.alert("Éxito", "Post creado correctamente");
+      setCreatePostModalVisible(false);
+      setPostTitle("");
+      setPostContent("");
+      setPostImage(null);
+      setPostCategory("");
+      await onRefresh();
+    } catch (error: any) {
+      console.error("❌ Error creando post:", error);
+      Alert.alert(
+        "Error",
+        error?.response?.data?.message || error?.message || "No se pudo crear el post"
+      );
+    } finally {
+      setIsSubmittingPost(false);
+    }
+  };
+
+  // ============ FUNCIONES DEL CARRITO ============
   const addToCart = (product: any) => {
     setSelectedProduct(product);
     setSelectedQuantity(1);
@@ -158,6 +256,7 @@ export default function AssociationDetailScreen() {
 
   const confirmAddToCart = () => {
     if (!selectedProduct) return;
+
     setCartItems((prev) => {
       const existing = prev.find((item) => item.product.id === selectedProduct.id);
       if (existing) {
@@ -169,6 +268,7 @@ export default function AssociationDetailScreen() {
       }
       return [...prev, { product: selectedProduct, quantity: selectedQuantity }];
     });
+
     setQuantityModalVisible(false);
     setSelectedProduct(null);
     setSelectedQuantity(1);
@@ -198,275 +298,60 @@ export default function AssociationDetailScreen() {
     );
   };
 
+  // ============ FUNCIÓN ENVIAR PEDIDO A WHATSAPP ============
   const sendOrderToWhatsApp = async () => {
     if (cartItems.length === 0) {
       Alert.alert("Error", "El carrito está vacío");
       return;
     }
-    try {
-      let phoneNumber = association.phone || WHATSAPP_NUMBER;
-      phoneNumber = phoneNumber.replace(/\D/g, "");
-      if (phoneNumber.length === 9) phoneNumber = `51${phoneNumber}`;
-      if (!phoneNumber || phoneNumber.length < 9) phoneNumber = "51933933002";
 
-      let message = `🛒 *Pedido para ${association.name}*\n\n📋 *Productos:*\n`;
+    try {
+      let phoneNumber = shop?.phone || WHATSAPP_NUMBER;
+      phoneNumber = phoneNumber.replace(/\D/g, "");
+
+      if (phoneNumber.length === 9) {
+        phoneNumber = `51${phoneNumber}`;
+      }
+
+      if (!phoneNumber || phoneNumber.length < 9) {
+        phoneNumber = "51933933002";
+      }
+
+      let message = `🛒 *Pedido para ${shop?.name || "la tienda"}*\n\n`;
+      message += `📋 *Productos:*\n`;
+
       cartItems.forEach((item, index) => {
-        message += `${index + 1}. ${item.product.name} x${item.quantity} - S/ ${(parseFloat(item.product.price) * item.quantity).toFixed(2)}\n`;
+        const price = parseFloat(item.product.price) || 0;
+        message += `${index + 1}. ${item.product.name} x${item.quantity} - S/ ${(price * item.quantity).toFixed(2)}\n`;
       });
-      message += `\n💰 *Total: S/ ${getCartTotal().toFixed(2)}*\n`;
-      message += `\n📍 *Asociación:* ${association.name}\n`;
+
+      const total = getCartTotal();
+      message += `\n💰 *Total: S/ ${total.toFixed(2)}*\n`;
+      message += `\n📞 *Teléfono de contacto:* [Tu número aquí]\n`;
+      message += `\n📍 *Tienda:* ${shop?.name || "Sin nombre"}\n`;
       message += `\n¡Gracias por tu pedido! 🙌`;
 
-      await Linking.openURL(`https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`);
+      const url = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`;
+
+      await Linking.openURL(url);
       setCartItems([]);
       setCartModalVisible(false);
       Alert.alert("Éxito", "Pedido enviado correctamente");
     } catch (error) {
-      console.error("Error opening WhatsApp:", error);
+      console.error("Error al abrir WhatsApp:", error);
       Alert.alert("Error", "No fue posible abrir WhatsApp");
     }
   };
 
-  // ==================== CREAR POST ====================
-  const pickPostImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permiso denegado", "Necesitamos acceso a tu galería");
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [16, 9],
-      quality: 0.8,
-    });
-    if (!result.canceled) setPostImage(result.assets[0].uri);
-  };
+  // ============================================================
+  // COMENTARIOS
+  // ============================================================
 
-  const handleCreatePost = async () => {
-    if (!postTitle.trim() || !postContent.trim()) {
-      Alert.alert("Error", "Título y contenido son obligatorios");
-      return;
-    }
-    if (!association || !association.id) {
-      Alert.alert("Error", "No se encontró la asociación o no tiene ID");
-      return;
-    }
-    setIsSubmittingPost(true);
-    try {
-      const payload: any = {
-        title: postTitle.trim(),
-        content: postContent.trim(),
-        postable_type: "App\\Models\\Association",
-        postable_id: association.id,
-      };
-      if (postCategory.trim()) payload.category = postCategory.trim();
-      if (postImage) {
-        const uriParts = postImage.split("/");
-        const fileName = uriParts[uriParts.length - 1] || "post.jpg";
-        const ext = fileName.split(".").pop()?.toLowerCase() || "jpg";
-        let mimeType = "image/jpeg";
-        if (ext === "png") mimeType = "image/png";
-        else if (ext === "webp") mimeType = "image/webp";
-        else if (ext === "gif") mimeType = "image/gif";
-        payload.image = { uri: postImage, name: fileName, type: mimeType };
-      }
-      await createPost(payload);
-      Alert.alert("Éxito", "Post creado correctamente");
-      setCreatePostModalVisible(false);
-      setPostTitle("");
-      setPostContent("");
-      setPostImage(null);
-      setPostCategory("");
-      await onRefresh();
-    } catch (error: any) {
-      Alert.alert("Error", error?.message || "No se pudo crear el post");
-    } finally {
-      setIsSubmittingPost(false);
-    }
-  };
-
-  // ==================== CREAR SERVICIO ====================
-  const pickServiceImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permiso denegado", "Necesitamos acceso a tu galería");
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    });
-    if (!result.canceled) setServiceImage(result.assets[0].uri);
-  };
-
-  const handleCreateService = async () => {
-    if (!serviceName.trim() || !servicePrice) {
-      Alert.alert("Error", "Nombre y precio son obligatorios");
-      return;
-    }
-    if (!association || !association.id) {
-      Alert.alert("Error", "No se encontró la asociación");
-      return;
-    }
-    setIsSubmittingService(true);
-    try {
-      const payload: any = {
-        name: serviceName.trim(),
-        description: serviceDescription.trim() || undefined,
-        price: parseFloat(servicePrice),
-        duration: serviceDuration ? parseInt(serviceDuration) : undefined,
-        serviceable_type: "App\\Models\\Association",
-        serviceable_id: association.id,
-      };
-      if (serviceImage) {
-        payload.image = { uri: serviceImage, name: "service.jpg", type: "image/jpeg" };
-      }
-      await createService(payload);
-      Alert.alert("Éxito", "Servicio creado correctamente");
-      setCreateServiceModalVisible(false);
-      setServiceName("");
-      setServiceDescription("");
-      setServicePrice("");
-      setServiceDuration("");
-      setServiceImage(null);
-      await onRefresh();
-    } catch (error: any) {
-      Alert.alert("Error", error?.message || "No se pudo crear el servicio");
-    } finally {
-      setIsSubmittingService(false);
-    }
-  };
-
-  // ==================== CREAR/EDITAR PRODUCTO ====================
-  const pickProductImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permiso denegado", "Necesitamos acceso a tu galería");
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    });
-    if (!result.canceled) {
-      const asset = result.assets[0];
-      const fileName = asset.uri.split("/").pop() || "product.jpg";
-      const ext = fileName.split(".").pop()?.toLowerCase() || "jpg";
-      const mime =
-        ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
-      setProductImage({ uri: asset.uri, name: fileName, type: mime });
-    }
-  };
-
-  const openCreateProductModal = () => {
-    setEditingProduct(null);
-    setProductName("");
-    setProductDescription("");
-    setProductPrice("");
-    setProductStock("");
-    setProductImage(null);
-    setProductModalVisible(true);
-  };
-
-  const openEditProductModal = (product: any) => {
-    setEditingProduct(product);
-    setProductName(product.name || "");
-    setProductDescription(product.description || "");
-    setProductPrice(String(product.price ?? ""));
-    setProductStock(String(product.stock ?? ""));
-    setProductImage(
-      product.image_url || product.image
-        ? { uri: product.image_url || product.image }
-        : null
-    );
-    setProductModalVisible(true);
-  };
-
-  const handleSaveProduct = async () => {
-    if (!productName.trim() || !productPrice) {
-      Alert.alert("Error", "Nombre y precio son obligatorios");
-      return;
-    }
-    if (!association?.id) {
-      Alert.alert("Error", "No se encontró la asociación");
-      return;
-    }
-
-    setIsSubmittingProduct(true);
-    try {
-      const formData = new FormData();
-      formData.append("name", productName.trim());
-      formData.append("description", productDescription.trim());
-      formData.append("price", String(parseFloat(productPrice)));
-      if (productStock) formData.append("stock", String(parseInt(productStock)));
-
-      if (!editingProduct) {
-        formData.append("association_id", String(association.id));
-      }
-
-      if (productImage?.uri && !productImage.uri.startsWith("http")) {
-        formData.append("image", {
-          uri: productImage.uri,
-          name: productImage.name || "product.jpg",
-          type: productImage.type || "image/jpeg",
-        } as any);
-      }
-
-      if (editingProduct) {
-        await updateProduct(editingProduct.id, formData);
-        Alert.alert("Éxito", "Producto actualizado");
-      } else {
-        await createProduct(formData);
-        Alert.alert("Éxito", "Producto creado");
-      }
-
-      setProductModalVisible(false);
-      await onRefresh();
-    } catch (error: any) {
-      console.error("❌ Error guardando producto:", error);
-      Alert.alert(
-        "Error",
-        error?.response?.data?.message || "No se pudo guardar el producto"
-      );
-    } finally {
-      setIsSubmittingProduct(false);
-    }
-  };
-
-  const handleDeleteProduct = (productId: number) => {
-    Alert.alert(
-      "Eliminar producto",
-      "¿Estás seguro? Esta acción no se puede deshacer.",
-      [
-        { text: "Cancelar", style: "cancel" },
-        {
-          text: "Eliminar",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await deleteProduct(productId);
-              Alert.alert("Éxito", "Producto eliminado");
-              await onRefresh();
-            } catch (error) {
-              Alert.alert("Error", "No se pudo eliminar el producto");
-            }
-          },
-        },
-      ]
-    );
-  };
-
-  // ==================== COMENTARIOS ====================
   const loadPostComments = async (postId: number) => {
     try {
       const data = await fetchPostComments(postId);
       setPostComments((prev) => ({ ...prev, [postId]: data }));
-    } catch {
+    } catch (error) {
       Alert.alert("Error", "No se pudieron cargar los comentarios");
     }
   };
@@ -475,7 +360,7 @@ export default function AssociationDetailScreen() {
     try {
       const data = await fetchProductComments(productId);
       setProductComments((prev) => ({ ...prev, [productId]: data }));
-    } catch {
+    } catch (error) {
       Alert.alert("Error", "No se pudieron cargar los comentarios");
     }
   };
@@ -492,7 +377,9 @@ export default function AssociationDetailScreen() {
       Alert.alert("Error", "Escribe un comentario");
       return;
     }
+
     if (!commentModalId || !commentModalType) return;
+
     try {
       if (commentModalType === "post") {
         const newComment = await createPostComment(commentModalId, commentModalText);
@@ -507,10 +394,11 @@ export default function AssociationDetailScreen() {
           [commentModalId!]: [newComment, ...(prev[commentModalId!] || [])],
         }));
       }
+
       setCommentModalVisible(false);
       setCommentModalText("");
       Alert.alert("Éxito", "Comentario agregado");
-    } catch {
+    } catch (error) {
       Alert.alert("Error", "No se pudo agregar el comentario");
     }
   };
@@ -520,14 +408,16 @@ export default function AssociationDetailScreen() {
       Alert.alert("Error", "Selecciona una calificación");
       return;
     }
+
     setSubmittingFeedback(true);
     try {
       await api.post("/feedbacks", {
-        feedbackable_type: "App\\Models\\Association",
-        feedbackable_id: association.id,
+        feedbackable_type: "App\\Models\\Shop",
+        feedbackable_id: shop.id,
         rating: feedbackRating,
         comment: feedbackComment,
       });
+
       Alert.alert("Éxito", "¡Reseña agregada correctamente!");
       setFeedbackModalVisible(false);
       setFeedbackRating(0);
@@ -553,8 +443,9 @@ export default function AssociationDetailScreen() {
               ...prev,
               [postId]: (prev[postId] || []).filter((c) => c.id !== commentId),
             }));
-          } catch {
-            Alert.alert("Error", "No se pudo eliminar el comentario");
+            Alert.alert("Éxito", "Comentario eliminado");
+          } catch (error) {
+            Alert.alert("Error", "No se pudo eliminar");
           }
         },
       },
@@ -574,8 +465,9 @@ export default function AssociationDetailScreen() {
               ...prev,
               [productId]: (prev[productId] || []).filter((c) => c.id !== commentId),
             }));
-          } catch {
-            Alert.alert("Error", "No se pudo eliminar el comentario");
+            Alert.alert("Éxito", "Comentario eliminado");
+          } catch (error) {
+            Alert.alert("Error", "No se pudo eliminar");
           }
         },
       },
@@ -587,11 +479,17 @@ export default function AssociationDetailScreen() {
       setShowCommentsFor(null);
     } else {
       setShowCommentsFor({ type, id });
-      if (type === "post") await loadPostComments(id);
-      else await loadProductComments(id);
+      if (type === "post") {
+        await loadPostComments(id);
+      } else {
+        await loadProductComments(id);
+      }
     }
   };
 
+  // ============================================================
+  // COMPONENTE DE COMENTARIOS
+  // ============================================================
   const CommentSection = ({
     comments,
     onDeleteComment,
@@ -603,7 +501,10 @@ export default function AssociationDetailScreen() {
     type: "post" | "product";
     itemId: number;
   }) => {
-    if (commentsLoading) return <ActivityIndicator size="small" color="#00B272" />;
+    if (commentsLoading) {
+      return <ActivityIndicator size="small" color="#00B272" />;
+    }
+
     return (
       <View style={styles.commentContainer}>
         {comments?.length > 0 ? (
@@ -636,6 +537,7 @@ export default function AssociationDetailScreen() {
         ) : (
           <Text style={styles.noComments}>No hay comentarios</Text>
         )}
+
         <TouchableOpacity
           style={styles.addCommentBtn}
           onPress={() => openCommentModal(type, itemId)}
@@ -650,15 +552,15 @@ export default function AssociationDetailScreen() {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color="#00B272" />
-        <Text style={{ marginTop: 12, color: "#64748B" }}>Cargando asociación...</Text>
+        <Text style={{ marginTop: 12, color: "#64748B" }}>Cargando tienda...</Text>
       </View>
     );
   }
 
-  if (!association) {
+  if (!shop) {
     return (
       <View style={styles.center}>
-        <Text style={{ fontSize: 16, color: "#64748B" }}>Asociación no encontrada</Text>
+        <Text style={{ fontSize: 16, color: "#64748B" }}>Tienda no encontrada</Text>
       </View>
     );
   }
@@ -667,7 +569,6 @@ export default function AssociationDetailScreen() {
     <View style={styles.container}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#00B272" />
         }
@@ -677,32 +578,30 @@ export default function AssociationDetailScreen() {
           <View style={styles.imageContainer}>
             <Image
               source={{
-                uri:
-                  association.image ||
-                  "https://tudealer.app/avatar/avatar_association.jpg",
+                uri: shop.image || "https://tudealer.app/avatar_store.jpg",
               }}
               style={styles.profileImage}
             />
           </View>
-          <Text style={styles.name}>{association.name}</Text>
-          <Text style={styles.specialty}>📍 {association.city}</Text>
+          <Text style={styles.name}>{shop.name}</Text>
+          <Text style={styles.specialty}>📍 {shop.city}</Text>
+
           <View style={styles.infoRow}>
-            <Text style={styles.sub}>📞 {association.phone || "No disponible"}</Text>
-            <Text style={styles.sub}>🌐 {association.website || "No disponible"}</Text>
+            <Text style={styles.sub}>🕓 {shop.schedule || "No disponible"}</Text>
+            <Text style={styles.sub}>📞 {shop.phone || "No disponible"}</Text>
           </View>
           <View style={styles.infoRow}>
-            <Text style={styles.sub}>🏠 {association.address || "No disponible"}</Text>
+            <Text style={styles.sub}>👤 {shop.user?.name || "No disponible"}</Text>
           </View>
-          <View style={styles.infoRow}>
-            <Text style={styles.sub}>👤 {association.user?.name || "No disponible"}</Text>
-          </View>
+
           <View style={styles.ratingContainer}>
             <Text style={styles.rating}>⭐ {rating.toFixed(1)}</Text>
             <Text style={styles.ratingCount}>
-              ({association.feedbacks?.length || 0} reseñas)
+              ({shop.feedbacks?.length || 0} reseñas)
             </Text>
           </View>
 
+          {/* ✅ BOTONES DE ACCIÓN PARA EL DUEÑO - SOLO POST */}
           {isOwner && (
             <View style={styles.ownerActions}>
               <TouchableOpacity
@@ -712,84 +611,137 @@ export default function AssociationDetailScreen() {
                 <Ionicons name="create-outline" size={18} color="#fff" />
                 <Text style={styles.ownerButtonText}>Crear Post</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.ownerButton, { backgroundColor: "#3B82F6" }]}
-                onPress={() => setCreateServiceModalVisible(true)}
-              >
-                <Ionicons name="construct-outline" size={18} color="#fff" />
-                <Text style={styles.ownerButtonText}>Crear Servicio</Text>
-              </TouchableOpacity>
             </View>
           )}
         </View>
 
-        {/* TABS */}
+        {/* TABS - SIN SERVICIOS */}
         <View style={styles.tabs}>
-          {["perfil", "posts", "productos", "servicios", "feedbacks"].map((tab) => (
+          {["sobre", "productos", "posts", "feedbacks"].map((tab) => (
             <TouchableOpacity
               key={tab}
               style={[styles.tab, activeTab === tab && styles.tabActive]}
               onPress={() => setActiveTab(tab)}
             >
               <Text style={activeTab === tab ? styles.tabTextActive : styles.tabText}>
-                {tab === "perfil"
-                  ? "Perfil"
-                  : tab === "posts"
-                  ? "Posts"
+                {tab === "sobre"
+                  ? "Sobre"
                   : tab === "productos"
                   ? "Productos"
-                  : tab === "servicios"
-                  ? "Servicios"
+                  : tab === "posts"
+                  ? "Posts"
                   : "Opiniones"}
               </Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        {/* PERFIL */}
-        {activeTab === "perfil" && (
+        {/* SOBRE */}
+        {activeTab === "sobre" && (
           <View style={styles.card}>
             <Text style={styles.title}>Descripción</Text>
-            <Text style={styles.text}>{association.description || "Sin descripción"}</Text>
+            <Text style={styles.text}>{shop.description || "Sin descripción"}</Text>
+
             <View style={styles.infoCard}>
               <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>📍 Ciudad</Text>
-                <Text style={styles.infoValue}>{association.city || "-"}</Text>
+                <Text style={styles.infoLabel}>Horario</Text>
+                <Text style={styles.infoValue}>{shop.schedule || "No disponible"}</Text>
               </View>
               <View style={styles.divider} />
               <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>📞 Teléfono</Text>
-                <Text style={styles.infoValue}>{association.phone || "-"}</Text>
+                <Text style={styles.infoLabel}>Teléfono</Text>
+                <Text style={styles.infoValue}>{shop.phone || "No disponible"}</Text>
               </View>
               <View style={styles.divider} />
               <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>🌐 Website</Text>
-                <Text style={styles.infoValue}>{association.website || "-"}</Text>
-              </View>
-              <View style={styles.divider} />
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>🏠 Dirección</Text>
-                <Text style={styles.infoValue}>{association.address || "-"}</Text>
+                <Text style={styles.infoLabel}>Propietario</Text>
+                <Text style={styles.infoValue}>{shop.user?.name || "No disponible"}</Text>
               </View>
             </View>
+          </View>
+        )}
+
+        {/* PRODUCTOS CON CARRITO */}
+        {activeTab === "productos" && (
+          <View>
+            {/* Botón del carrito */}
+            <TouchableOpacity
+              style={[styles.cartButton, styles.cartButtonFloat]}
+              onPress={() => setCartModalVisible(true)}
+            >
+              <Ionicons name="cart" size={24} color="#fff" />
+              {cartItems.length > 0 && (
+                <View style={styles.cartBadge}>
+                  <Text style={styles.cartBadgeText}>{cartItems.length}</Text>
+                </View>
+              )}
+              <Text style={styles.cartButtonText}>Ver Carrito</Text>
+            </TouchableOpacity>
+
+            {shopProducts.length > 0 ? (
+              shopProducts.map((product) => (
+                <View key={product.id} style={styles.card}>
+                  {product.image && (
+                    <Image source={{ uri: product.image }} style={styles.productImage} />
+                  )}
+                  <Text style={styles.title}>{product.name}</Text>
+                  <Text style={styles.text}>{product.description}</Text>
+                  <Text style={styles.price}>S/ {Number(product.price).toFixed(2)}</Text>
+
+                  <TouchableOpacity
+                    style={styles.addToCartBtn}
+                    onPress={() => addToCart(product)}
+                  >
+                    <Ionicons name="add-circle-outline" size={20} color="#fff" />
+                    <Text style={styles.addToCartText}>Agregar al carrito</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.commentToggleBtn}
+                    onPress={() => toggleComments("product", product.id)}
+                  >
+                    <Text style={styles.commentToggleText}>
+                      {showCommentsFor?.type === "product" && showCommentsFor?.id === product.id
+                        ? "Ocultar comentarios"
+                        : `Ver comentarios (${productComments[product.id]?.length || 0})`}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {showCommentsFor?.type === "product" && showCommentsFor?.id === product.id && (
+                    <CommentSection
+                      comments={productComments[product.id] || []}
+                      onDeleteComment={(commentId) =>
+                        handleDeleteProductComment(commentId, product.id)
+                      }
+                      type="product"
+                      itemId={product.id}
+                    />
+                  )}
+                </View>
+              ))
+            ) : (
+              <View style={styles.card}>
+                <Text style={styles.text}>Esta tienda no tiene productos aún</Text>
+              </View>
+            )}
           </View>
         )}
 
         {/* POSTS */}
         {activeTab === "posts" && (
           <View>
-            {association.posts && association.posts.length > 0 ? (
-              association.posts.map((post: any) => (
+            {shopNews.length > 0 ? (
+              shopNews.map((post) => (
                 <View key={post.id} style={styles.card}>
-                  {post.image && (
+                  {(post.image_url || post.image) && (
                     <Image
-                      source={{ uri: post.image }}
-                      style={styles.postImage}
-                      resizeMode="cover"
+                      source={{ uri: post.image_url || post.image }}
+                      style={styles.productImage}
                     />
                   )}
-                  <Text style={styles.title}>{post.title}</Text>
-                  <Text style={styles.text}>{post.short_content || post.content}</Text>
+                  <Text style={styles.title}>{post.titulo}</Text>
+                  <Text style={styles.text}>{post.descripcion}</Text>
+
                   <TouchableOpacity
                     style={styles.commentToggleBtn}
                     onPress={() => toggleComments("post", post.id)}
@@ -800,6 +752,7 @@ export default function AssociationDetailScreen() {
                         : `Ver comentarios (${postComments[post.id]?.length || 0})`}
                     </Text>
                   </TouchableOpacity>
+
                   {showCommentsFor?.type === "post" && showCommentsFor?.id === post.id && (
                     <CommentSection
                       comments={postComments[post.id] || []}
@@ -814,167 +767,7 @@ export default function AssociationDetailScreen() {
               ))
             ) : (
               <View style={styles.card}>
-                <Text style={styles.text}>Esta asociación no tiene posts aún</Text>
-              </View>
-            )}
-          </View>
-        )}
-
-        {/* PRODUCTOS */}
-        {activeTab === "productos" && (
-          <View>
-            <TouchableOpacity
-              style={[styles.cartButton, styles.cartButtonFloat]}
-              onPress={() => setCartModalVisible(true)}
-            >
-              <Ionicons name="cart" size={24} color="#fff" />
-              {cartItems.length > 0 && (
-                <View style={styles.cartBadge}>
-                  <Text style={styles.cartBadgeText}>{cartItems.length}</Text>
-                </View>
-              )}
-              <Text style={styles.cartButtonText}>Ver Carrito</Text>
-            </TouchableOpacity>
-
-            {isOwner && (
-              <TouchableOpacity
-                style={[styles.btn, styles.addFeedbackBtn, { flexDirection: "row", gap: 8 }]}
-                onPress={openCreateProductModal}
-              >
-                <Ionicons name="add-circle-outline" size={20} color="#fff" />
-                <Text style={styles.btnText}>Agregar producto</Text>
-              </TouchableOpacity>
-            )}
-
-            {association.products && association.products.length > 0 ? (
-              association.products.map((product: any) => (
-                <View key={product.id} style={styles.productCard}>
-                  {product.image_url || product.image ? (
-                    <Image
-                      source={{ uri: product.image_url || product.image }}
-                      style={styles.productImage}
-                      resizeMode="cover"
-                    />
-                  ) : (
-                    <View style={[styles.productImage, styles.productImagePlaceholder]}>
-                      <Ionicons name="image-outline" size={40} color="#94A3B8" />
-                    </View>
-                  )}
-
-                  <View style={styles.productBody}>
-                    <View style={styles.productHeaderRow}>
-                      <Text style={styles.productName} numberOfLines={2}>
-                        {product.name}
-                      </Text>
-                      <Text style={styles.productPrice}>
-                        S/ {Number(product.price).toFixed(2)}
-                      </Text>
-                    </View>
-
-                    {product.description ? (
-                      <Text style={styles.productDescription} numberOfLines={2}>
-                        {product.description}
-                      </Text>
-                    ) : null}
-
-                    {product.stock !== undefined && product.stock !== null && (
-                      <View style={styles.stockBadge}>
-                        <Ionicons name="cube-outline" size={14} color="#00B272" />
-                        <Text style={styles.stockText}>Stock: {product.stock}</Text>
-                      </View>
-                    )}
-
-                    {isOwner && (
-                      <View style={styles.productActions}>
-                        <TouchableOpacity
-                          style={[styles.productActionBtn, styles.editBtn]}
-                          onPress={() => openEditProductModal(product)}
-                        >
-                          <Ionicons name="pencil-outline" size={16} color="#fff" />
-                          <Text style={styles.productActionText}>Editar</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[styles.productActionBtn, styles.deleteBtn]}
-                          onPress={() => handleDeleteProduct(product.id)}
-                        >
-                          <Ionicons name="trash-outline" size={16} color="#fff" />
-                          <Text style={styles.productActionText}>Eliminar</Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
-
-                    {!isOwner && (
-                      <TouchableOpacity
-                        style={styles.addToCartBtn}
-                        onPress={() => addToCart(product)}
-                      >
-                        <Ionicons name="add-circle-outline" size={20} color="#fff" />
-                        <Text style={styles.addToCartText}>Agregar al carrito</Text>
-                      </TouchableOpacity>
-                    )}
-
-                    <TouchableOpacity
-                      style={styles.commentToggleBtn}
-                      onPress={() => toggleComments("product", product.id)}
-                    >
-                      <Text style={styles.commentToggleText}>
-                        {showCommentsFor?.type === "product" &&
-                        showCommentsFor?.id === product.id
-                          ? "Ocultar comentarios"
-                          : `Ver comentarios (${productComments[product.id]?.length || 0})`}
-                      </Text>
-                    </TouchableOpacity>
-
-                    {showCommentsFor?.type === "product" &&
-                      showCommentsFor?.id === product.id && (
-                        <CommentSection
-                          comments={productComments[product.id] || []}
-                          onDeleteComment={(commentId) =>
-                            handleDeleteProductComment(commentId, product.id)
-                          }
-                          type="product"
-                          itemId={product.id}
-                        />
-                      )}
-                  </View>
-                </View>
-              ))
-            ) : (
-              <View style={styles.card}>
-                <Text style={styles.text}>Esta asociación no tiene productos aún</Text>
-              </View>
-            )}
-          </View>
-        )}
-
-        {/* SERVICIOS */}
-        {activeTab === "servicios" && (
-          <View>
-            {association.services && association.services.length > 0 ? (
-              association.services.map((service: any) => (
-                <View key={service.id} style={styles.card}>
-                  {service.image && (
-                    <Image
-                      source={{ uri: service.image }}
-                      style={styles.postImage}
-                      resizeMode="cover"
-                    />
-                  )}
-                  <Text style={styles.title}>{service.name}</Text>
-                  <Text style={styles.text}>{service.description}</Text>
-                  <View style={styles.serviceInfo}>
-                    <Text style={styles.price}>
-                      S/ {Number(service.price).toFixed(2)}
-                    </Text>
-                    {service.duration && (
-                      <Text style={styles.duration}>⏱ {service.duration} min</Text>
-                    )}
-                  </View>
-                </View>
-              ))
-            ) : (
-              <View style={styles.card}>
-                <Text style={styles.text}>Esta asociación no tiene servicios aún</Text>
+                <Text style={styles.text}>Esta tienda no tiene posts aún</Text>
               </View>
             )}
           </View>
@@ -989,8 +782,9 @@ export default function AssociationDetailScreen() {
             >
               <Text style={styles.btnText}>+ Agregar reseña</Text>
             </TouchableOpacity>
-            {association.feedbacks && association.feedbacks.length > 0 ? (
-              association.feedbacks.map((f: any) => (
+
+            {shop.feedbacks && shop.feedbacks.length > 0 ? (
+              shop.feedbacks.map((f) => (
                 <View key={f.id} style={styles.card}>
                   <View style={styles.feedbackHeader}>
                     <View style={styles.commentUserInfo}>
@@ -1015,12 +809,15 @@ export default function AssociationDetailScreen() {
         )}
       </ScrollView>
 
+      {/* ============ MODALES ============ */}
+
       {/* MODAL DE CANTIDAD */}
       <Modal visible={quantityModalVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.quantityModal}>
             <Text style={styles.modalTitle}>Seleccionar cantidad</Text>
             <Text style={styles.quantityProductName}>{selectedProduct?.name}</Text>
+
             <View style={styles.quantitySelector}>
               <TouchableOpacity
                 style={styles.quantityBtn}
@@ -1036,10 +833,12 @@ export default function AssociationDetailScreen() {
                 <Text style={styles.quantityBtnText}>+</Text>
               </TouchableOpacity>
             </View>
+
             <Text style={styles.quantityPrice}>
               Total: S/{" "}
               {(parseFloat(selectedProduct?.price || 0) * selectedQuantity).toFixed(2)}
             </Text>
+
             <View style={styles.commentModalActions}>
               <TouchableOpacity
                 style={[styles.btn, styles.cancelModalBtn]}
@@ -1072,6 +871,7 @@ export default function AssociationDetailScreen() {
                 <Ionicons name="close" size={28} color="#333" />
               </TouchableOpacity>
             </View>
+
             {cartItems.length === 0 ? (
               <View style={styles.emptyCart}>
                 <Ionicons name="cart-outline" size={60} color="#ccc" />
@@ -1087,7 +887,7 @@ export default function AssociationDetailScreen() {
                     <View style={styles.cartItem}>
                       <Image
                         source={{
-                          uri: item.product.image_url || item.product.image || "https://picsum.photos/60",
+                          uri: item.product.image || "https://picsum.photos/60",
                         }}
                         style={styles.cartItemImage}
                       />
@@ -1096,19 +896,24 @@ export default function AssociationDetailScreen() {
                           {item.product.name}
                         </Text>
                         <Text style={styles.cartItemPrice}>
-                          S/ {(parseFloat(item.product.price) * item.quantity).toFixed(2)}
+                          S/{" "}
+                          {(parseFloat(item.product.price) * item.quantity).toFixed(2)}
                         </Text>
                         <View style={styles.cartItemQuantity}>
                           <TouchableOpacity
                             style={styles.cartQtyBtn}
-                            onPress={() => updateQuantity(item.product.id, item.quantity - 1)}
+                            onPress={() =>
+                              updateQuantity(item.product.id, item.quantity - 1)
+                            }
                           >
                             <Text style={styles.cartQtyBtnText}>-</Text>
                           </TouchableOpacity>
                           <Text style={styles.cartQtyText}>{item.quantity}</Text>
                           <TouchableOpacity
                             style={styles.cartQtyBtn}
-                            onPress={() => updateQuantity(item.product.id, item.quantity + 1)}
+                            onPress={() =>
+                              updateQuantity(item.product.id, item.quantity + 1)
+                            }
                           >
                             <Text style={styles.cartQtyBtnText}>+</Text>
                           </TouchableOpacity>
@@ -1123,6 +928,7 @@ export default function AssociationDetailScreen() {
                     </View>
                   )}
                 />
+
                 <View style={styles.cartFooter}>
                   <View style={styles.cartTotalRow}>
                     <Text style={styles.cartTotalLabel}>Total:</Text>
@@ -1130,7 +936,11 @@ export default function AssociationDetailScreen() {
                       S/ {getCartTotal().toFixed(2)}
                     </Text>
                   </View>
-                  <TouchableOpacity style={styles.whatsappBtn} onPress={sendOrderToWhatsApp}>
+
+                  <TouchableOpacity
+                    style={styles.whatsappBtn}
+                    onPress={sendOrderToWhatsApp}
+                  >
                     <Ionicons name="logo-whatsapp" size={24} color="#fff" />
                     <Text style={styles.whatsappBtnText}>Enviar pedido por WhatsApp</Text>
                   </TouchableOpacity>
@@ -1141,11 +951,12 @@ export default function AssociationDetailScreen() {
         </View>
       </Modal>
 
-      {/* MODAL COMENTARIO */}
+      {/* MODAL - Agregar comentario */}
       <Modal visible={commentModalVisible} transparent animationType="slide">
         <View style={styles.modal}>
           <View style={[styles.modalContent, styles.commentModalContent]}>
             <Text style={styles.modalTitle}>Agregar comentario</Text>
+
             <TextInput
               style={styles.commentModalInput}
               placeholder="Escribe tu comentario..."
@@ -1155,6 +966,7 @@ export default function AssociationDetailScreen() {
               numberOfLines={4}
               textAlignVertical="top"
             />
+
             <View style={styles.commentModalActions}>
               <TouchableOpacity
                 style={[styles.btn, styles.cancelModalBtn]}
@@ -1173,11 +985,12 @@ export default function AssociationDetailScreen() {
         </View>
       </Modal>
 
-      {/* MODAL FEEDBACK */}
+      {/* MODAL - Agregar Feedback */}
       <Modal visible={feedbackModalVisible} transparent animationType="slide">
         <View style={styles.modal}>
           <View style={[styles.modalContent, styles.commentModalContent]}>
-            <Text style={styles.modalTitle}>Calificar a {association.name}</Text>
+            <Text style={styles.modalTitle}>Calificar a {shop.name}</Text>
+
             <View style={styles.ratingSelector}>
               {[1, 2, 3, 4, 5].map((star) => (
                 <TouchableOpacity
@@ -1186,21 +999,20 @@ export default function AssociationDetailScreen() {
                   style={styles.starButton}
                 >
                   <Text
-                    style={[
-                      styles.starText,
-                      feedbackRating >= star && styles.starActive,
-                    ]}
+                    style={[styles.starText, feedbackRating >= star && styles.starActive]}
                   >
                     ⭐
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
+
             <Text style={styles.ratingLabel}>
               {feedbackRating > 0
                 ? `${feedbackRating} estrella${feedbackRating > 1 ? "s" : ""}`
                 : "Selecciona una calificación"}
             </Text>
+
             <TextInput
               style={styles.commentModalInput}
               placeholder="Escribe tu reseña..."
@@ -1210,6 +1022,7 @@ export default function AssociationDetailScreen() {
               numberOfLines={4}
               textAlignVertical="top"
             />
+
             <View style={styles.commentModalActions}>
               <TouchableOpacity
                 style={[styles.btn, styles.cancelModalBtn]}
@@ -1235,57 +1048,23 @@ export default function AssociationDetailScreen() {
         </View>
       </Modal>
 
-      {/* MODAL CREAR POST */}
-      <Modal visible={createPostModalVisible} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-            style={styles.keyboardView}
-          >
-            <View style={[styles.modalContent, styles.editModalContainer]}>
-              <View style={styles.editModalHeader}>
-                <Text style={styles.modalTitle}>📝 Crear Post</Text>
-                <TouchableOpacity onPress={() => setCreatePostModalVisible(false)}>
-                  <Ionicons name="close" size={24} color="#333" />
-                </TouchableOpacity>
-              </View>
-              <ScrollView showsVerticalScrollIndicator={false}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Título del post *"
-                  placeholderTextColor="#999"
-                  value={postTitle}
-                  onChangeText={setPostTitle}
-                />
-                <TextInput
-                  style={[styles.input, styles.textArea]}
-                  placeholder="Contenido *"
-                  placeholderTextColor="#999"
-                  value={postContent}
-                  onChangeText={setPostContent}
-                  multiline
-                  numberOfLines={5}
-                  textAlignVertical="top"
-                />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Categoría (opcional)"
-                  placeholderTextColor="#999"
-                  value={postCategory}
-                  onChangeText={setPostCategory}
-                />
-                <TouchableOpacity style={styles.imagePickerButton} onPress={pickPostImage}>
-                  <Ionicons name="image-outline" size={24} color="#00B272" />
-                  <Text style={styles.imagePickerText}>
-                    {postImage ? "🔄 Cambiar imagen" : "📷 Seleccionar imagen"}
-                  </Text>
-                </TouchableOpacity>
-                {postImage && (
-                  <Image source={{ uri: postImage }} style={styles.previewImage} />
-                )}
-                <View style={styles.commentModalActions}>
+      {/* ✅ MODAL - CREAR POST */}
+      <Modal
+        visible={createPostModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setCreatePostModalVisible(false)}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={styles.modalOverlay}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === "ios" ? "padding" : "height"}
+              style={styles.modalWrapper}
+            >
+              <View style={[styles.modalContentLarge, styles.modalContentPost]}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>📝 Nueva publicación</Text>
                   <TouchableOpacity
-                    style={[styles.btn, styles.cancelModalBtn]}
                     onPress={() => {
                       setCreatePostModalVisible(false);
                       setPostTitle("");
@@ -1293,221 +1072,99 @@ export default function AssociationDetailScreen() {
                       setPostImage(null);
                       setPostCategory("");
                     }}
+                    style={styles.modalClose}
                   >
-                    <Text style={styles.btnText}>Cancelar</Text>
+                    <Ionicons name="close" size={24} color="#6B7280" />
                   </TouchableOpacity>
+                </View>
+
+                <TextInput
+                  placeholder="Título *"
+                  placeholderTextColor="#9CA3AF"
+                  value={postTitle}
+                  onChangeText={setPostTitle}
+                  style={styles.input}
+                />
+
+                <TextInput
+                  placeholder="¿Qué deseas publicar? *"
+                  placeholderTextColor="#9CA3AF"
+                  multiline
+                  value={postContent}
+                  onChangeText={setPostContent}
+                  style={[styles.input, styles.contentInput]}
+                />
+
+                <TextInput
+                  placeholder="Categoría (opcional)"
+                  placeholderTextColor="#9CA3AF"
+                  value={postCategory}
+                  onChangeText={setPostCategory}
+                  style={styles.input}
+                />
+
+                <TouchableOpacity style={styles.imagePicker} onPress={pickPostImage}>
+                  <Ionicons name="image-outline" size={20} color="#00B272" />
+                  <Text style={styles.imagePickerText}>
+                    {postImage ? "Cambiar imagen" : "Seleccionar imagen"}
+                  </Text>
+                </TouchableOpacity>
+
+                {postImage && (
+                  <Image source={{ uri: postImage }} style={styles.previewImage} />
+                )}
+
+                <View style={styles.modalActions}>
                   <TouchableOpacity
-                    style={[styles.btn, styles.submitBtn]}
+                    style={[styles.cancelBtn, { borderColor: "#E5E7EB", borderWidth: 1 }]}
+                    onPress={() => {
+                      setCreatePostModalVisible(false);
+                      setPostTitle("");
+                      setPostContent("");
+                      setPostImage(null);
+                      setPostCategory("");
+                    }}
+                    disabled={isSubmittingPost}
+                  >
+                    <Text style={{ color: "#6B7280", fontWeight: "600" }}>Cancelar</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.publishBtn,
+                      (!postTitle.trim() || !postContent.trim() || isSubmittingPost) &&
+                        styles.publishBtnDisabled,
+                    ]}
                     onPress={handleCreatePost}
                     disabled={!postTitle.trim() || !postContent.trim() || isSubmittingPost}
                   >
-                    <Text style={styles.btnText}>
-                      {isSubmittingPost ? "Creando..." : "Publicar"}
+                    <Text style={styles.publishBtnText}>
+                      {isSubmittingPost ? "Publicando..." : "Publicar"}
                     </Text>
                   </TouchableOpacity>
                 </View>
-              </ScrollView>
-            </View>
-          </KeyboardAvoidingView>
-        </View>
-      </Modal>
-
-      {/* MODAL CREAR SERVICIO */}
-      <Modal visible={createServiceModalVisible} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-            style={styles.keyboardView}
-          >
-            <View style={[styles.modalContent, styles.editModalContainer]}>
-              <View style={styles.editModalHeader}>
-                <Text style={styles.modalTitle}>💼 Crear Servicio</Text>
-                <TouchableOpacity onPress={() => setCreateServiceModalVisible(false)}>
-                  <Ionicons name="close" size={24} color="#333" />
-                </TouchableOpacity>
               </View>
-              <ScrollView showsVerticalScrollIndicator={false}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Nombre del servicio *"
-                  placeholderTextColor="#999"
-                  value={serviceName}
-                  onChangeText={setServiceName}
-                />
-                <TextInput
-                  style={[styles.input, styles.textArea]}
-                  placeholder="Descripción"
-                  placeholderTextColor="#999"
-                  value={serviceDescription}
-                  onChangeText={setServiceDescription}
-                  multiline
-                  numberOfLines={4}
-                  textAlignVertical="top"
-                />
-                <View style={styles.row}>
-                  <TextInput
-                    style={[styles.input, styles.rowInput]}
-                    placeholder="Precio *"
-                    placeholderTextColor="#999"
-                    value={servicePrice}
-                    onChangeText={setServicePrice}
-                    keyboardType="numeric"
-                  />
-                  <TextInput
-                    style={[styles.input, styles.rowInput]}
-                    placeholder="Duración (min)"
-                    placeholderTextColor="#999"
-                    value={serviceDuration}
-                    onChangeText={setServiceDuration}
-                    keyboardType="numeric"
-                  />
-                </View>
-                <TouchableOpacity style={styles.imagePickerButton} onPress={pickServiceImage}>
-                  <Ionicons name="image-outline" size={24} color="#00B272" />
-                  <Text style={styles.imagePickerText}>
-                    {serviceImage ? "🔄 Cambiar imagen" : "📷 Seleccionar imagen"}
-                  </Text>
-                </TouchableOpacity>
-                {serviceImage && (
-                  <Image source={{ uri: serviceImage }} style={styles.previewImage} />
-                )}
-                <View style={styles.commentModalActions}>
-                  <TouchableOpacity
-                    style={[styles.btn, styles.cancelModalBtn]}
-                    onPress={() => {
-                      setCreateServiceModalVisible(false);
-                      setServiceName("");
-                      setServiceDescription("");
-                      setServicePrice("");
-                      setServiceDuration("");
-                      setServiceImage(null);
-                    }}
-                  >
-                    <Text style={styles.btnText}>Cancelar</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.btn, styles.submitBtn]}
-                    onPress={handleCreateService}
-                    disabled={
-                      !serviceName.trim() || !servicePrice || isSubmittingService
-                    }
-                  >
-                    <Text style={styles.btnText}>
-                      {isSubmittingService ? "Creando..." : "Crear Servicio"}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </ScrollView>
-            </View>
-          </KeyboardAvoidingView>
-        </View>
-      </Modal>
-
-      {/* MODAL CREAR/EDITAR PRODUCTO */}
-      <Modal visible={productModalVisible} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-            style={styles.keyboardView}
-          >
-            <View style={[styles.modalContent, styles.editModalContainer]}>
-              <View style={styles.editModalHeader}>
-                <Text style={styles.modalTitle}>
-                  {editingProduct ? "✏️ Editar Producto" : "📦 Nuevo Producto"}
-                </Text>
-                <TouchableOpacity onPress={() => setProductModalVisible(false)}>
-                  <Ionicons name="close" size={24} color="#333" />
-                </TouchableOpacity>
-              </View>
-              <ScrollView showsVerticalScrollIndicator={false}>
-                <TouchableOpacity
-                  style={styles.productImagePicker}
-                  onPress={pickProductImage}
-                >
-                  {productImage?.uri ? (
-                    <Image
-                      source={{ uri: productImage.uri }}
-                      style={styles.productImagePreview}
-                    />
-                  ) : (
-                    <View style={styles.productImageModalPlaceholder}>
-                      <Ionicons name="camera-outline" size={40} color="#00B272" />
-                      <Text style={styles.productImagePlaceholderText}>
-                        Toca para agregar imagen
-                      </Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-
-                <TextInput
-                  style={styles.input}
-                  placeholder="Nombre del producto *"
-                  placeholderTextColor="#999"
-                  value={productName}
-                  onChangeText={setProductName}
-                />
-                <TextInput
-                  style={[styles.input, styles.textArea]}
-                  placeholder="Descripción"
-                  placeholderTextColor="#999"
-                  value={productDescription}
-                  onChangeText={setProductDescription}
-                  multiline
-                  numberOfLines={3}
-                  textAlignVertical="top"
-                />
-                <View style={styles.row}>
-                  <TextInput
-                    style={[styles.input, styles.rowInput]}
-                    placeholder="Precio *"
-                    placeholderTextColor="#999"
-                    value={productPrice}
-                    onChangeText={setProductPrice}
-                    keyboardType="numeric"
-                  />
-                  <TextInput
-                    style={[styles.input, styles.rowInput]}
-                    placeholder="Stock"
-                    placeholderTextColor="#999"
-                    value={productStock}
-                    onChangeText={setProductStock}
-                    keyboardType="numeric"
-                  />
-                </View>
-                <View style={styles.commentModalActions}>
-                  <TouchableOpacity
-                    style={[styles.btn, styles.cancelModalBtn]}
-                    onPress={() => setProductModalVisible(false)}
-                  >
-                    <Text style={styles.btnText}>Cancelar</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.btn, styles.submitBtn]}
-                    onPress={handleSaveProduct}
-                    disabled={isSubmittingProduct}
-                  >
-                    <Text style={styles.btnText}>
-                      {isSubmittingProduct
-                        ? "Guardando..."
-                        : editingProduct
-                        ? "Actualizar"
-                        : "Crear"}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </ScrollView>
-            </View>
-          </KeyboardAvoidingView>
-        </View>
+            </KeyboardAvoidingView>
+          </View>
+        </TouchableWithoutFeedback>
       </Modal>
     </View>
   );
 }
 
+// ============================================================
+// ESTILOS COMPLETOS
+// ============================================================
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F5F7F9" },
-  center: { flex: 1, justifyContent: "center", alignItems: "center" },
-  scrollContent: { paddingBottom: 30 },
+  container: {
+    flex: 1,
+    backgroundColor: "#F5F7F9",
+  },
+  center: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   headerCard: {
     backgroundColor: "#fff",
     margin: 12,
@@ -1531,7 +1188,11 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     marginBottom: 12,
   },
-  profileImage: { width: "100%", height: "100%", resizeMode: "cover" },
+  profileImage: {
+    width: "100%",
+    height: "100%",
+    resizeMode: "cover",
+  },
   name: {
     fontSize: 24,
     fontWeight: "bold",
@@ -1553,16 +1214,31 @@ const styles = StyleSheet.create({
     marginTop: 6,
     flexWrap: "wrap",
   },
-  sub: { color: "#666", fontSize: 14 },
+  sub: {
+    color: "#666",
+    fontSize: 14,
+  },
   ratingContainer: {
     flexDirection: "row",
     alignItems: "center",
     marginTop: 10,
     gap: 8,
   },
-  rating: { color: "#FF9900", fontSize: 16, fontWeight: "bold" },
-  ratingCount: { color: "#666", fontSize: 14 },
-  ownerActions: { flexDirection: "row", gap: 10, marginTop: 12, width: "100%" },
+  rating: {
+    color: "#FF9900",
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+  ratingCount: {
+    color: "#666",
+    fontSize: 14,
+  },
+  ownerActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 12,
+    width: "100%",
+  },
   ownerButton: {
     flex: 1,
     flexDirection: "row",
@@ -1572,7 +1248,11 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     gap: 8,
   },
-  ownerButtonText: { color: "#fff", fontSize: 14, fontWeight: "600" },
+  ownerButtonText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
+  },
   card: {
     backgroundColor: "#fff",
     margin: 12,
@@ -1595,26 +1275,47 @@ const styles = StyleSheet.create({
   tab: {
     borderWidth: 1,
     borderColor: "#00B272",
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
     margin: 4,
   },
-  tabActive: { backgroundColor: "#00B272" },
-  tabText: { color: "#00B272", fontSize: 13, fontWeight: "500" },
-  tabTextActive: { color: "#fff", fontSize: 13, fontWeight: "500" },
-  title: { fontWeight: "bold", marginBottom: 6, fontSize: 16, color: "#1A1A2E" },
-  text: { color: "#555", fontSize: 14, lineHeight: 20 },
-  postImage: {
+  tabActive: {
+    backgroundColor: "#00B272",
+  },
+  tabText: {
+    color: "#00B272",
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  tabTextActive: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  title: {
+    fontWeight: "bold",
+    marginBottom: 6,
+    fontSize: 16,
+    color: "#1A1A2E",
+  },
+  text: {
+    color: "#555",
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  productImage: {
     width: "100%",
     height: 200,
     borderRadius: 10,
     marginBottom: 10,
-    backgroundColor: "#f0f0f0",
   },
-  price: { color: "#00B272", marginTop: 8, fontSize: 18, fontWeight: "bold" },
-  duration: { color: "#666", fontSize: 14, marginTop: 8 },
-  serviceInfo: { flexDirection: "row", alignItems: "center", gap: 16 },
+  price: {
+    color: "#00B272",
+    marginTop: 8,
+    fontSize: 18,
+    fontWeight: "bold",
+  },
   btn: {
     backgroundColor: "#00B272",
     paddingVertical: 12,
@@ -1624,38 +1325,309 @@ const styles = StyleSheet.create({
     marginTop: 10,
     flex: 1,
   },
-  submitBtn: { backgroundColor: "#00B272" },
-  addFeedbackBtn: { marginHorizontal: 12, marginBottom: 8 },
-  cancelModalBtn: { backgroundColor: "#999", marginRight: 8 },
-  btnText: { color: "#fff", fontSize: 16, fontWeight: "600" },
-  addToCartBtn: {
+  submitBtn: {
     backgroundColor: "#00B272",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    marginTop: 10,
-    gap: 8,
   },
-  addToCartText: { color: "#fff", fontSize: 14, fontWeight: "600" },
-  cartButtonFloat: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#00B272",
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 12,
+  addFeedbackBtn: {
     marginHorizontal: 12,
     marginBottom: 8,
-    gap: 10,
+  },
+  cancelModalBtn: {
+    backgroundColor: "#999",
+    marginRight: 8,
+  },
+  btnText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  modal: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    padding: 20,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalWrapper: {
+    width: "100%",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalContent: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 16,
+    maxHeight: "85%",
+  },
+  modalContentLarge: {
+    width: "92%",
+    backgroundColor: "#FFF",
+    borderRadius: 20,
+    padding: 20,
+    maxHeight: "85%",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  modalContentPost: {
+    maxHeight: "80%",
+  },
+  commentModalContent: {
+    maxHeight: "60%",
+  },
+  cartModalContent: {
+    maxHeight: "90%",
+    padding: 0,
+    borderRadius: 20,
+    overflow: "hidden",
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    textAlign: "center",
+    marginBottom: 16,
+    color: "#1A1A2E",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  modalClose: {
+    padding: 4,
+  },
+  keyboardView: {
+    width: "100%",
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    backgroundColor: "#FAFAFA",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10,
+    fontSize: 14,
+    color: "#111827",
+  },
+  contentInput: {
+    minHeight: 100,
+    textAlignVertical: "top",
+  },
+  imagePicker: {
+    flexDirection: "row",
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: "#00B272",
+    borderRadius: 12,
+    padding: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 10,
+    backgroundColor: "#F0FDF4",
+    gap: 8,
+  },
+  imagePickerText: {
+    color: "#00B272",
+    fontWeight: "600",
+  },
+  previewImage: {
+    width: "100%",
+    height: 150,
+    borderRadius: 12,
+    marginBottom: 10,
+  },
+  modalActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 4,
+  },
+  cancelBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  publishBtn: {
+    flex: 2,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: "center",
+    backgroundColor: "#00B272",
+  },
+  publishBtnDisabled: {
+    opacity: 0.5,
+  },
+  publishBtnText: {
+    color: "#FFF",
+    fontWeight: "700",
+    fontSize: 15,
+  },
+  commentContainer: {
+    marginTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#E8ECF0",
+    paddingTop: 12,
+  },
+  commentItem: {
+    backgroundColor: "#F5F7F9",
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  commentHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 4,
+  },
+  commentUserInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  commentAvatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "#00B272",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  commentAvatarText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "bold",
+  },
+  commentAuthor: {
+    fontWeight: "bold",
+    fontSize: 14,
+    color: "#333",
+  },
+  commentContent: {
+    fontSize: 14,
+    color: "#555",
+    marginBottom: 4,
+    marginLeft: 38,
+  },
+  commentDate: {
+    fontSize: 11,
+    color: "#999",
+    marginLeft: 38,
+  },
+  deleteCommentBtn: {
+    padding: 4,
+  },
+  deleteCommentText: {
+    color: "#FF6B6B",
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+  commentToggleBtn: {
+    marginTop: 8,
+    paddingVertical: 6,
+  },
+  commentToggleText: {
+    color: "#00B272",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  addCommentBtn: {
+    marginTop: 8,
+    paddingVertical: 8,
+    alignItems: "center",
+    backgroundColor: "#F0F7F4",
+    borderRadius: 8,
+  },
+  addCommentText: {
+    color: "#00B272",
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  commentModalInput: {
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
+    borderRadius: 8,
+    padding: 12,
+    minHeight: 100,
+    fontSize: 16,
+    textAlignVertical: "top",
+    backgroundColor: "#fff",
+    marginBottom: 12,
+  },
+  commentModalActions: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  feedbackHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  feedbackUser: {
+    fontWeight: "bold",
+    fontSize: 14,
+    color: "#333",
+  },
+  noComments: {
+    color: "#999",
+    fontSize: 14,
+    textAlign: "center",
+    marginVertical: 8,
+  },
+  ratingSelector: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 12,
+    marginVertical: 16,
+  },
+  starButton: {
+    padding: 8,
+  },
+  starText: {
+    fontSize: 32,
+    opacity: 0.3,
+  },
+  starActive: {
+    opacity: 1,
+  },
+  ratingLabel: {
+    textAlign: "center",
+    fontSize: 16,
+    color: "#666",
+    marginBottom: 16,
+  },
+  infoCard: {
+    backgroundColor: "#F8FAFC",
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 12,
+  },
+  infoLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#334155",
+  },
+  infoValue: {
+    flex: 1,
+    textAlign: "right",
+    marginLeft: 12,
+    fontSize: 14,
+    color: "#64748B",
+  },
+  divider: {
+    height: 1,
+    backgroundColor: "#EEF2F7",
+    marginVertical: 8,
   },
   cartButton: {
     flexDirection: "row",
@@ -1669,7 +1641,18 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     gap: 10,
   },
-  cartButtonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
+  cartButtonFloat: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  cartButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
   cartBadge: {
     position: "absolute",
     top: -6,
@@ -1682,50 +1665,27 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 4,
   },
-  cartBadgeText: { color: "#fff", fontSize: 12, fontWeight: "bold" },
-  modal: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    padding: 20,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    padding: 20,
-  },
-  modalContent: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 16,
-    maxHeight: "85%",
-  },
-  commentModalContent: { maxHeight: "60%" },
-  cartModalContent: {
-    maxHeight: "90%",
-    padding: 0,
-    borderRadius: 20,
-    overflow: "hidden",
-  },
-  editModalContainer: { maxHeight: "90%", padding: 20, borderRadius: 20 },
-  modalTitle: {
-    fontSize: 20,
+  cartBadgeText: {
+    color: "#fff",
+    fontSize: 12,
     fontWeight: "bold",
-    textAlign: "center",
-    marginBottom: 16,
-    color: "#1A1A2E",
   },
-  editModalHeader: {
+  addToCartBtn: {
+    backgroundColor: "#00B272",
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#E8ECF0",
+    justifyContent: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    marginTop: 10,
+    gap: 8,
   },
-  keyboardView: { width: "100%" },
+  addToCartText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
+  },
   quantityModal: {
     backgroundColor: "#fff",
     borderRadius: 20,
@@ -1756,7 +1716,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  quantityBtnText: { fontSize: 24, fontWeight: "bold", color: "#00B272" },
+  quantityBtnText: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: "#00B272",
+  },
   quantityText: {
     fontSize: 28,
     fontWeight: "bold",
@@ -1781,8 +1745,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#E8ECF0",
   },
-  closeCartBtn: { padding: 4 },
-  cartList: { maxHeight: 400, paddingHorizontal: 16 },
+  closeCartBtn: {
+    padding: 4,
+  },
+  cartList: {
+    maxHeight: 400,
+    paddingHorizontal: 16,
+  },
   cartItem: {
     flexDirection: "row",
     alignItems: "center",
@@ -1790,9 +1759,20 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#F0F0F0",
   },
-  cartItemImage: { width: 50, height: 50, borderRadius: 8, marginRight: 12 },
-  cartItemInfo: { flex: 1 },
-  cartItemName: { fontSize: 14, fontWeight: "600", color: "#1A1A2E" },
+  cartItemImage: {
+    width: 50,
+    height: 50,
+    borderRadius: 8,
+    marginRight: 12,
+  },
+  cartItemInfo: {
+    flex: 1,
+  },
+  cartItemName: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#1A1A2E",
+  },
   cartItemPrice: {
     fontSize: 14,
     color: "#00B272",
@@ -1813,7 +1793,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  cartQtyBtnText: { fontSize: 16, fontWeight: "bold", color: "#00B272" },
+  cartQtyBtnText: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#00B272",
+  },
   cartQtyText: {
     fontSize: 16,
     fontWeight: "600",
@@ -1821,7 +1805,9 @@ const styles = StyleSheet.create({
     minWidth: 24,
     textAlign: "center",
   },
-  cartRemoveBtn: { padding: 8 },
+  cartRemoveBtn: {
+    padding: 8,
+  },
   cartFooter: {
     padding: 16,
     borderTopWidth: 1,
@@ -1834,14 +1820,26 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 12,
   },
-  cartTotalLabel: { fontSize: 18, fontWeight: "bold", color: "#1A1A2E" },
-  cartTotalValue: { fontSize: 20, fontWeight: "bold", color: "#00B272" },
+  cartTotalLabel: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#1A1A2E",
+  },
+  cartTotalValue: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#00B272",
+  },
   emptyCart: {
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 40,
   },
-  emptyCartText: { fontSize: 16, color: "#999", marginTop: 12 },
+  emptyCartText: {
+    fontSize: 16,
+    color: "#999",
+    marginTop: 12,
+  },
   whatsappBtn: {
     backgroundColor: "#25D366",
     flexDirection: "row",
@@ -1851,239 +1849,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     gap: 10,
   },
-  whatsappBtnText: { color: "#fff", fontSize: 16, fontWeight: "bold" },
-  commentContainer: {
-    marginTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: "#E8ECF0",
-    paddingTop: 12,
-  },
-  commentItem: {
-    backgroundColor: "#F5F7F9",
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 8,
-  },
-  commentHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 4,
-  },
-  commentUserInfo: { flexDirection: "row", alignItems: "center", gap: 8 },
-  commentAvatar: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: "#00B272",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  commentAvatarText: { color: "#fff", fontSize: 14, fontWeight: "bold" },
-  commentAuthor: { fontWeight: "bold", fontSize: 14, color: "#333" },
-  commentContent: {
-    fontSize: 14,
-    color: "#555",
-    marginBottom: 4,
-    marginLeft: 38,
-  },
-  commentDate: { fontSize: 11, color: "#999", marginLeft: 38 },
-  deleteCommentBtn: { padding: 4 },
-  deleteCommentText: { color: "#FF6B6B", fontSize: 16, fontWeight: "bold" },
-  commentToggleBtn: { marginTop: 8, paddingVertical: 6 },
-  commentToggleText: { color: "#00B272", fontSize: 14, fontWeight: "600" },
-  addCommentBtn: {
-    marginTop: 8,
-    paddingVertical: 8,
-    alignItems: "center",
-    backgroundColor: "#F0F7F4",
-    borderRadius: 8,
-  },
-  addCommentText: { color: "#00B272", fontSize: 14, fontWeight: "500" },
-  commentModalInput: {
-    borderWidth: 1,
-    borderColor: "#E0E0E0",
-    borderRadius: 8,
-    padding: 12,
-    minHeight: 100,
+  whatsappBtnText: {
+    color: "#fff",
     fontSize: 16,
-    textAlignVertical: "top",
-    backgroundColor: "#fff",
-    marginBottom: 12,
-  },
-  commentModalActions: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  feedbackHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 6,
-  },
-  feedbackUser: { fontWeight: "bold", fontSize: 14, color: "#333" },
-  noComments: {
-    color: "#999",
-    fontSize: 14,
-    textAlign: "center",
-    marginVertical: 8,
-  },
-  ratingSelector: {
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: 12,
-    marginVertical: 16,
-  },
-  starButton: { padding: 8 },
-  starText: { fontSize: 32, opacity: 0.3 },
-  starActive: { opacity: 1 },
-  ratingLabel: {
-    textAlign: "center",
-    fontSize: 16,
-    color: "#666",
-    marginBottom: 16,
-  },
-  infoCard: {
-    backgroundColor: "#F8FAFC",
-    borderRadius: 12,
-    padding: 12,
-    marginTop: 12,
-  },
-  infoLabel: { fontSize: 14, fontWeight: "600", color: "#334155" },
-  infoValue: {
-    flex: 1,
-    textAlign: "right",
-    marginLeft: 12,
-    fontSize: 14,
-    color: "#64748B",
-  },
-  divider: { height: 1, backgroundColor: "#EEF2F7", marginVertical: 8 },
-  input: {
-    borderWidth: 1,
-    borderColor: "#E0E0E0",
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-    backgroundColor: "#fff",
-    marginBottom: 12,
-    color: "#333",
-  },
-  textArea: { minHeight: 100, textAlignVertical: "top" },
-  row: { flexDirection: "row", gap: 10 },
-  rowInput: { flex: 1 },
-  imagePickerButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1.5,
-    borderColor: "#00B272",
-    borderRadius: 12,
-    padding: 14,
-    gap: 8,
-    marginBottom: 12,
-    borderStyle: "dashed",
-    backgroundColor: "#F0FDF4",
-  },
-  imagePickerText: { fontSize: 14, fontWeight: "500", color: "#00B272" },
-  previewImage: {
-    width: "100%",
-    height: 150,
-    borderRadius: 10,
-    marginBottom: 12,
-    backgroundColor: "#f0f0f0",
-  },
-  // ===== PRODUCTOS =====
-  productCard: {
-    backgroundColor: "#fff",
-    marginHorizontal: 12,
-    marginBottom: 12,
-    borderRadius: 16,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "#E8ECF0",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  productImage: {
-    width: "100%",
-    height: 200,
-    backgroundColor: "#F1F5F9",
-  },
-  productImagePlaceholder: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  productBody: { padding: 14 },
-  productHeaderRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: 8,
-  },
-  productName: {
-    flex: 1,
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#1A1A2E",
-  },
-  productPrice: { fontSize: 18, fontWeight: "800", color: "#00B272" },
-  productDescription: {
-    marginTop: 6,
-    fontSize: 13,
-    color: "#64748B",
-    lineHeight: 18,
-  },
-  stockBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    marginTop: 8,
-    alignSelf: "flex-start",
-    backgroundColor: "#F0FDF4",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  stockText: { fontSize: 12, color: "#00B272", fontWeight: "600" },
-  productActions: { flexDirection: "row", gap: 8, marginTop: 12 },
-  productActionBtn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 10,
-    borderRadius: 10,
-    gap: 6,
-  },
-  editBtn: { backgroundColor: "#3B82F6" },
-  deleteBtn: { backgroundColor: "#EF4444" },
-  productActionText: { color: "#fff", fontSize: 13, fontWeight: "700" },
-  productImagePicker: {
-    width: "100%",
-    height: 180,
-    borderRadius: 12,
-    overflow: "hidden",
-    marginBottom: 12,
-    backgroundColor: "#F0FDF4",
-    borderWidth: 1.5,
-    borderColor: "#00B272",
-    borderStyle: "dashed",
-  },
-  productImagePreview: { width: "100%", height: "100%" },
-  productImageModalPlaceholder: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-  productImagePlaceholderText: {
-    color: "#00B272",
-    fontSize: 13,
-    fontWeight: "600",
+    fontWeight: "bold",
   },
 });

@@ -1,16 +1,16 @@
-import React, { useState } from "react";
+import { useState } from "react";
 
 import {
-  View,
-  Text,
-  TouchableOpacity,
   Image,
   StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 import {
-  useRouter,
   useLocalSearchParams,
+  useRouter,
 } from "expo-router";
 
 export default function LoginStartScreen(): JSX.Element {
@@ -43,7 +43,7 @@ export default function LoginStartScreen(): JSX.Element {
       {/* Logo */}
       <View style={styles.logoContainer}>
         <Image
-          source={require("../../../../assets/logo.png")}
+          source={require("../../../assets/logo.png")}
           style={styles.logo}
         />
       </View>

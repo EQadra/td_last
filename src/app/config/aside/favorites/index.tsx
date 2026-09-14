@@ -1,6 +1,6 @@
 // app/favorites/index.tsx
 import { Ionicons } from "@expo/vector-icons";
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -338,6 +338,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   filterButton: {
+    marginTop: 10,
     paddingHorizontal: 14,
     paddingVertical: 6,
     borderRadius: 20,

@@ -1,5 +1,5 @@
 // components/LatestServices.tsx - VERSIÓN CON API REAL
-import React, {
+import {
   useCallback,
   useEffect,
   useState,
@@ -8,6 +8,7 @@ import React, {
 import {
   ActivityIndicator,
   Alert,
+  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -47,6 +48,7 @@ interface ServiceItem {
   description?: string;
   price: string | number;
   duration?: number | string;
+  image?: string | null;
   created_at: string;
   updated_at?: string;
   serviceable_type?: string;
@@ -264,12 +266,20 @@ const LatestServices = () => {
             },
           ]}
         >
-          <View style={[styles.serviceImagePlaceholder, { backgroundColor: colors.blue + '20' }]}>
-            <Ionicons name="construct" size={50} color={colors.blue} />
-            <Text style={[styles.serviceImageText, { color: colors.blue }]}>
-              {item.name.charAt(0).toUpperCase()}
-            </Text>
-          </View>
+          {item.image ? (
+            <Image
+              source={{ uri: item.image }}
+              style={styles.serviceImage}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={[styles.serviceImagePlaceholder, { backgroundColor: colors.blue + '20' }]}>
+              <Ionicons name="construct" size={50} color={colors.blue} />
+              <Text style={[styles.serviceImageText, { color: colors.blue }]}>
+                {item.name.charAt(0).toUpperCase()}
+              </Text>
+            </View>
+          )}
 
           <View style={styles.serviceHeader}>
             <View style={styles.serviceAvatarContainer}>
@@ -444,7 +454,7 @@ const LatestServices = () => {
   return (
     <View style={[styles.container, { backgroundColor: colors.card }]}>
       <Text style={[styles.title, { color: colors.text }]}>
-        🔧 Servicios disponibles
+        🔧 Servicios 
       </Text>
 
       <View style={styles.listContent}>
@@ -647,6 +657,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 4,
     elevation: 2,
+  },
+  serviceImage: {
+    width: "100%",
+    height: 150,
+    borderRadius: 10,
+    marginBottom: 12,
   },
   serviceImagePlaceholder: {
     width: "100%",

@@ -38,7 +38,7 @@ export default function SecondView() {
         </View>
 
         <Image
-          source={require("../../../../assets/2.png")}
+          source={require("../../../assets/2.png")}
           style={styles.image}
           resizeMode="contain"
         />

@@ -1,6 +1,6 @@
 // components/LatestPost.tsx - COMPLETO CORREGIDO CON IMAGENES
 import { Ionicons } from "@expo/vector-icons";
-import React, { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -329,6 +329,9 @@ const LatestPost = ({ limit = 15, showHeader = true, onPostPress }: LatestPostPr
           </Text>
         </View>
       )}
+        <Text style={[styles.title, { color: colors.text, marginLeft: 8 }]}>
+           💬 Posts
+        </Text>
 
       {/* Posts - Usando View + map */}
       <View style={styles.listContent}>
@@ -432,10 +435,7 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 12,
   },
-  title: {
-    fontSize: 22,
-    fontWeight: "700",
-  },
+
   subtitle: {
     fontSize: 14,
     marginTop: 2,
@@ -568,6 +568,13 @@ const styles = StyleSheet.create({
   postImagePlaceholderText: {
     fontSize: 14,
     fontWeight: "500",
+  },
+    title: {
+    fontSize: 20,
+    fontWeight: "700",
+    marginTop: 12,
+    marginBottom: 12,
+    paddingHorizontal: 16,
   },
   postActions: {
     flexDirection: "row",
@@ -735,6 +742,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "500",
   },
+  titleRow: {
+  flexDirection: "row",
+  alignItems: "center",
+  marginBottom: 12,
+  paddingHorizontal: 16,
+},
 });
 
 export default LatestPost;
